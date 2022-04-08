@@ -653,7 +653,7 @@ class Model():
         # ----- response outputs (always in standard units) ---------------------------------------
         
         if 'response' in self.results:
-            
+
             RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
 
             self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
