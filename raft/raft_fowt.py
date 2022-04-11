@@ -405,8 +405,8 @@ class FOWT():
             # interpole to the frequencies RAFT is using
             addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
             dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
-            fExRealInterp   = interp2d(heads, w3,   R      , assume_sorted=False        )(caseHeadings,self.w)
-            fExImagInterp   = interp2d(heads, w3,   I      , assume_sorted=False        )(caseHeadings,self.w)
+            fExRealInterp   = interp2d(heads, w3, R)(caseHeadings,self.w,assume_sorted=False)
+            fExImagInterp   = interp2d(heads, w3, I)(caseHeadings,self.w,assume_sorted=False)
             # self.heads = heads # JvS: Save headings for interpolation of hydrodynamics based for wave heading
 
             # copy results over to the FOWT's coefficient arrays
