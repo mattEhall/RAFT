@@ -501,7 +501,7 @@ class FOWT():
 
         # ----- calculate potential-flow wave excitation force -----
         caseIndex = np.where(self.caseHeadings == self.beta)
-        self.F_BEM = self.X_BEM[iCase, :, :] * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
+        self.F_BEM = self.X_BEM[caseIndex, :, :] * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
         # JvS: looking up added heading using self.beta to calculate F_BEM for heading
         #      this needs to be changed once multiple wave headings are evaluated.
         # --------------------- get constant hydrodynamic values along each member -----------------------------
