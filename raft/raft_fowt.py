@@ -117,10 +117,12 @@ class FOWT():
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
 
         # initialize BEM arrays, whether or not a BEM sovler is used
+        nCases = len(design['cases']['data']) # This needs to be changed to amount of headings total, once multiple headings have been included.
+
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
         self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
-        self.X_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
-        self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
+        self.X_BEM = np.zeros([nCases,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
+        self.F_BEM = np.zeros([nCases,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
 
 
     def calcStatics(self):
@@ -314,7 +316,7 @@ class FOWT():
 
 
 
-    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0):
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, caseHeadings = 0, nCases = 1, minHeading= 0, headingStep= 0):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -334,6 +336,14 @@ class FOWT():
             desired longitudinal panel size for potential flow BEM analysis (m)
         da : float
             desired azimuthal panel size for potential flow BEM analysis (m)
+        caseHeadings : float
+            wave heading of all evaluated cases (deg)
+        nCases : int
+            amount of Cases to ne run (-)
+        minHeading : float
+            minimum heading angle to be evaluated by pyHAMS (deg)
+        headingStep : float
+            steps between headings for calculation in pyHAMS (deg)
         '''
                 
         # go through members to be modeled with BEM and calculated their nodes and panels lists
@@ -377,7 +387,7 @@ class FOWT():
             nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
                 
             ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
-                                  numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS)
+                                  numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS ,numHeadings=nCases, minHeading=minHeading, dHeading=headingStep)
                                   
             # Note about zero/infinite frequencies from WAMIT-formatted output files (as per WAMIT v7 manual): 
             # The limiting values of the added-mass coefficients may be evaluated for zero or infinite
@@ -392,13 +402,13 @@ class FOWT():
             # read the HAMS WAMIT-style output files
             addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
             M, P, R, I, w3, heads  = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
-            
             # interpole to the frequencies RAFT is using
             addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
             dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
-            fExRealInterp   = interp1d(w3,   R      , assume_sorted=False        )(self.w)
-            fExImagInterp   = interp1d(w3,   I      , assume_sorted=False        )(self.w)
-            
+            fExRealInterp   = interp2d(heads, w3,   R      , assume_sorted=False        )(caseHeadings,self.w)
+            fExImagInterp   = interp2d(heads, w3,   I      , assume_sorted=False        )(caseHeadings,self.w)
+            # self.heads = heads # JvS: Save headings for interpolation of hydrodynamics based for wave heading
+
             # copy results over to the FOWT's coefficient arrays
             self.A_BEM = self.rho_water * addedMassInterp
             self.B_BEM = self.rho_water * dampingInterp                                 
@@ -491,8 +501,9 @@ class FOWT():
 
         # ----- calculate potential-flow wave excitation force -----
 
-        self.F_BEM = self.X_BEM * self.zeta     # wave excitation force (will be zero if HAMS wasn't run)
-            
+        self.F_BEM = self.X_BEM[self.beta, :, :] * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
+        # JvS: looking up added heading using self.beta to calculate F_BEM for heading
+        #      this needs to be changed once multiple wave headings are evaluated.
         # --------------------- get constant hydrodynamic values along each member -----------------------------
 
         self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]

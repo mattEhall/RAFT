@@ -212,7 +212,18 @@ class Model():
         # calculate the system's constant properties
         for fowt in self.fowtList:
             fowt.calcStatics()
-            fowt.calcBEM()
+            caseHeadings = self.design['cases']['data']['wave_heading']
+            maxHeading = max(self.design['cases']['data']['wave_heading'])
+            minHeading = min(self.design['cases']['data']['wave_heading'])
+            if nCases == 2:
+                headingStep = maxHeading-minHeading
+                fowt.calcBEM(caseHeadings=caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
+            elif nCases > 2:
+                headingStep = (maxHeading-minHeading)/nCases
+                fowt.calcBEM(caseHeadings=caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
+            else:
+                minHeading = min(self.design['cases']['data']['wave_heading'])
+                fowt.calcBEM(caseHeadings=minHeading)
             
         # loop through each case
         for iCase in range(nCases):
@@ -227,7 +238,7 @@ class Model():
             for fowt in self.fowtList:
                 fowt.Xi0 = np.zeros(6)      # zero platform offsets
                 fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
-                fowt.calcHydroConstants(case)
+                fowt.calcHydroConstants(case,iCase)
             
             # calculate platform offsets and mooring system equilibrium state
             self.calcMooringAndOffsets()
