@@ -212,15 +212,15 @@ class Model():
         # calculate the system's constant properties
         for fowt in self.fowtList:
             fowt.calcStatics()
-            caseHeadings = self.design['cases']['data']['wave_heading']
+            self.caseHeadings = self.design['cases']['data']['wave_heading']
             maxHeading = max(self.design['cases']['data']['wave_heading'])
             minHeading = min(self.design['cases']['data']['wave_heading'])
             if nCases == 2:
                 headingStep = maxHeading-minHeading
-                fowt.calcBEM(caseHeadings=caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
+                fowt.calcBEM(caseHeadings=self.caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
             elif nCases > 2:
                 headingStep = (maxHeading-minHeading)/nCases
-                fowt.calcBEM(caseHeadings=caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
+                fowt.calcBEM(caseHeadings=self.caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
             else:
                 minHeading = min(self.design['cases']['data']['wave_heading'])
                 fowt.calcBEM(caseHeadings=minHeading)

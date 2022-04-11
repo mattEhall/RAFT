@@ -2,7 +2,7 @@
 
 import os
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, interp2d
 
 import pyhams.pyhams     as ph
 import raft.member2pnl as pnl
@@ -500,8 +500,8 @@ class FOWT():
         # TODO: consider current and viscous drift
 
         # ----- calculate potential-flow wave excitation force -----
-
-        self.F_BEM = self.X_BEM[self.beta, :, :] * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
+        caseIndex = np.where(self.caseHeadings == self.beta)
+        self.F_BEM = self.X_BEM[iCase, :, :] * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
         # JvS: looking up added heading using self.beta to calculate F_BEM for heading
         #      this needs to be changed once multiple wave headings are evaluated.
         # --------------------- get constant hydrodynamic values along each member -----------------------------
