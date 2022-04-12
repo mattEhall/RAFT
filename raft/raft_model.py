@@ -212,18 +212,22 @@ class Model():
         # calculate the system's constant properties
         for fowt in self.fowtList:
             fowt.calcStatics()
-            self.caseHeadings = self.design['cases']['data']['wave_heading']
-            maxHeading = max(self.design['cases']['data']['wave_heading'])
-            minHeading = min(self.design['cases']['data']['wave_heading'])
+            keys = self.design['cases']['keys']
+            values = self.design['cases']['data']
+            data = [dict(zip(keys,value)) for value in values]
+            self.caseHeadings = [float(data_head['wave_heading']) for data_head in data]
+            maxHeading = max(self.caseHeadings)
+            minHeading = min(self.caseHeadings)
             if nCases == 2:
                 headingStep = maxHeading-minHeading
-                fowt.calcBEM(caseHeadings=self.caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
+                fowt.calcBEM(nHeadings=nCases,minHeading=minHeading,headingStep=headingStep)
             elif nCases > 2:
-                headingStep = (maxHeading-minHeading)/nCases
-                fowt.calcBEM(caseHeadings=self.caseHeadings,nCases=nCases,minHeading=minHeading,headingStep=headingStep)
+                headingStep = np.min(np.abs(np.diff(self.caseHeadings)))
+                numberOfHeadings = int((maxHeading-minHeading)/headingStep+1)
+                fowt.calcBEM(nHeadings=numberOfHeadings,minHeading=minHeading,headingStep=headingStep)
+                # JvS: Consider adding interpolation later, to reduce number of evaluations
             else:
-                minHeading = min(self.design['cases']['data']['wave_heading'])
-                fowt.calcBEM(caseHeadings=minHeading)
+                fowt.calcBEM(nHeadings = 1 ,minHeading=minHeading)
             
         # loop through each case
         for iCase in range(nCases):
@@ -238,7 +242,7 @@ class Model():
             for fowt in self.fowtList:
                 fowt.Xi0 = np.zeros(6)      # zero platform offsets
                 fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
-                fowt.calcHydroConstants(case,iCase)
+                fowt.calcHydroConstants(case)
             
             # calculate platform offsets and mooring system equilibrium state
             self.calcMooringAndOffsets()

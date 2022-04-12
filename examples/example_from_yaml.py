@@ -22,7 +22,7 @@ model.solveEigen()
 model.analyzeCases(display=1)
 
 # Plot the power spectral densities from the load cases
-model.plotResponses()
+model.plotResponses_extended()
 
 # Visualize the system in its most recently evaluated mean offset position
 model.plot(hideGrid=True)
