@@ -109,7 +109,7 @@ class Model():
         for fowt in self.fowtList:
             fowt.calcStatics()
             #fowt.calcBEM()
-            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0, add_waveheading=False))
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
         try: 
@@ -207,23 +207,18 @@ class Model():
         
         # wind and wave spectra for reference
         self.results['case_metrics']['wind_PSD'] = np.zeros([nCases, self.nw])
-        self.results['case_metrics']['wave_PSD'] = np.zeros([nCases, self.nw])
-        
+        self.results['case_metrics']['wave_PSD1'] = np.zeros([nCases, self.nw])
+        self.results['case_metrics']['wave_PSD2'] = np.zeros([nCases, self.nw])
+
         # calculate the system's constant properties
         for fowt in self.fowtList:
             fowt.calcStatics()
-            keys = self.design['cases']['keys']
-            values = self.design['cases']['data']
-            data = [dict(zip(keys,value)) for value in values]
-            self.caseHeadings = [float(data_head['wave_heading']) for data_head in data]
-            maxHeading = max(self.caseHeadings)
+            # Calculate BEM for all wave headings included in cases
+            self.caseHeadings, headingStep, numberOfHeadings = getUniqueCaseHeadings(self.design['cases']['keys'],self.design['cases']['data'])
             minHeading = min(self.caseHeadings)
-            if nCases == 2:
-                headingStep = maxHeading-minHeading
+            if len(self.caseHeadings) == 2:
                 fowt.calcBEM(nHeadings=nCases,minHeading=minHeading,headingStep=headingStep)
-            elif nCases > 2:
-                headingStep = np.min(np.abs(np.diff(self.caseHeadings)))
-                numberOfHeadings = int((maxHeading-minHeading)/headingStep+1)
+            elif len(self.caseHeadings) > 2:
                 fowt.calcBEM(nHeadings=numberOfHeadings,minHeading=minHeading,headingStep=headingStep)
                 # JvS: Consider adding interpolation later, to reduce number of evaluations
             else:
@@ -486,7 +481,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=1):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -599,8 +594,10 @@ class Model():
             ax[1].plot(self.w, np.abs(Xi[3,:])*180/np.pi, 'b', label="roll")
             ax[1].plot(self.w, np.abs(Xi[4,:])*180/np.pi, 'g', label="pitch")
             ax[1].plot(self.w, np.abs(Xi[5,:])*180/np.pi, 'r', label="yaw")
-            ax[2].plot(self.w, fowt.zeta,                 'k', label="wave amplitude (m)")
-    
+            ax[2].plot(self.w, fowt.storeZeta[0,:],                 'k', label="wave amplitude 1 (m)")
+            if np.all(fowt.storeZeta[1,:] == 0) == False:
+                ax[2].plot(self.w, fowt.storeZeta[1,:],                 'k', label="wave amplitude 2 (m)")
+
             ax[0].legend()
             ax[1].legend()
             ax[2].legend()
@@ -705,7 +702,7 @@ class Model():
             ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
             ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
             ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
-            ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
+            ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD1' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
 
             # need a variable number of subplots for the mooring lines
             #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
@@ -730,7 +727,7 @@ class Model():
     def plotResponses_extended(self):
         '''Plots more power spectral densities of the available response channels for each case.'''
 
-        fig, ax = plt.subplots(9, 1, sharex=True)
+        fig, ax = plt.subplots(10, 1, sharex=True)
 
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
@@ -745,9 +742,10 @@ class Model():
             ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
             ax[7].plot(self.w / TwoPi,
                        TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
-            ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][iCase, :],
+            ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD1'][iCase, :],
                        label=f'case {iCase + 1}')  # wave spectrum
-
+            ax[9].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD2'][iCase, :],
+                       label=f'case {iCase + 1}')  # wave spectrum
             # need a variable number of subplots for the mooring lines
             # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
@@ -760,6 +758,7 @@ class Model():
         ax[6].set_ylabel('nac. acc. \n' + r'((m/s$^2$)$^2$/Hz)')
         ax[7].set_ylabel('twr. bend \n' + r'((Nm)$^2$/Hz)')
         ax[8].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
+        ax[9].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
 
         # ax[0].set_ylim([0.0, 25])
         # ax[1].set_ylim([0.0, 15])

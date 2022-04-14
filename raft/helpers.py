@@ -661,7 +661,39 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
     
     return d
     
-    
+def getUniqueCaseHeadings(keys, values):
+    '''
+    Function to obtain unique heading values for calculation in BEM.
+
+    Parameters
+    ----------
+    keys : dict
+        dict with keys of design data
+    values : dict
+        dict of all design data
+    '''
+    caseHeadings = []
+    data = [dict(zip(keys, value)) for value in values]
+    wave_headings = [float(data_head['wave_heading']) for data_head in data]
+    wave_headings += [float(data_head['wave_heading2']) for data_head in data]
+    for wh in wave_headings:
+        if wh not in caseHeadings:
+            caseHeadings.append(wh)
+
+    maxHeading = max(caseHeadings)
+    minHeading = min(caseHeadings)
+    if len(caseHeadings) == 2:
+        headingStep = maxHeading - minHeading
+        numberOfHeadings = 2
+    elif len(caseHeadings) > 2:
+        headingStep = np.min(np.abs(np.diff(caseHeadings)))
+        numberOfHeadings = int((maxHeading - minHeading) / headingStep + 1)
+        # this is different from only two headings, as it requires headings in between
+    else:
+        headingStep = 0
+        numberOfHeadings = 1
+    return caseHeadings, headingStep, numberOfHeadings # only have unique values in evaluated list, otherwise possibly issues with np.diff
+
 if __name__ == '__main__':
     
     

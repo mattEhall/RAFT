@@ -18,12 +18,12 @@ site:
     
 cases:
 
-    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading  ]
-    data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           -30        ]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0        ]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           60        ]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45        ]
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, add_waveheading, wave_spectrum2, wave_period2, wave_height2, wave_heading2]
+    data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)          bool        string            (s)           (m)           (deg)
+        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            20,          3,             -90]
+        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           30,              True,           JONSWAP,            25,          4,             -120]
+        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45,              True,           JONSWAP,            18,          4,             -90]
+        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45,              False,           JONSWAP,            25,          4,             -90]
 
 
 turbine:

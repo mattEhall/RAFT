@@ -121,11 +121,10 @@ class FOWT():
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
 
         # initialize BEM arrays, whether or not a BEM sovler is used
-        nCases = len(design['cases']['data']) # This needs to be changed to amount of headings total, once multiple headings have been included.
-
+        __, __, numberOfHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
         self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
-        self.X_BEM = np.zeros([nCases,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
+        self.X_BEM = np.zeros([numberOfHeadings,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
 
     def calcStatics(self):
@@ -478,128 +477,161 @@ class FOWT():
         '''This computes the linear strip-theory-hydrodynamics terms, including wave excitation for a specific case.'''
 
         # set up sea state
-        
-        self.beta = case['wave_heading']
-
-        # make wave spectrum
-        if case['wave_spectrum'] == 'unit':
-            self.zeta = np.tile(1, self.nw)
-            S         = np.tile(1, self.nw)
-        elif case['wave_spectrum'] == 'JONSWAP':
-            S = JONSWAP(self.w, case['wave_height'], case['wave_period'])        
-            self.zeta = np.sqrt(S)    # wave elevation amplitudes (these are easiest to use)
-        elif case['wave_spectrum'] in ['none','still']:
-            self.zeta = np.zeros(self.nw)        
-            S = np.zeros(self.nw)        
-        else:
-            raise ValueError(f"Wave spectrum input '{case['wave_spectrum']}' not recognized.")
-        
+        print(case)
         rho = self.rho_water
-        g   = self.g
-        
-        #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
+        g = self.g
+        self.F_BEM = np.zeros([6,  self.nw], dtype=complex)
+        self.storeZeta = np.zeros([2, self.nw])
+        print(self.storeZeta.shape)
 
-        # TODO: consider current and viscous drift
+        # set up empty
+        self.A_hydro_morison = np.zeros([6, 6])  # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
+        self.F_hydro_iner = np.zeros([6, self.nw],dtype=complex)  # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
-        # ----- calculate potential-flow wave excitation force -----
-        caseIndex = np.where(self.headsStored == self.beta)
-        self.F_BEM = self.X_BEM[caseIndex, :, :] * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
-        # JvS: looking up added heading using self.beta to calculate F_BEM for heading
-        #      this needs to be changed once multiple wave headings are evaluated.
-        # --------------------- get constant hydrodynamic values along each member -----------------------------
+        if case['add_waveheading'] == True:
+            case['wave_heading'] = [case['wave_heading'], case['wave_heading2']]
+            case['wave_spectrum'] = [case['wave_spectrum'], case['wave_spectrum2']]
+            case['wave_period'] = [case['wave_period'], case['wave_period2']]
+            case['wave_height'] = [case['wave_height'], case['wave_height2']]
+            nHeadingsEval = 2
+        else:
+            nHeadingsEval = 1
+        for ii in range(nHeadingsEval):
+            if case['add_waveheading'] == True:
+                self.beta = case['wave_heading'][ii]
+                if case['wave_spectrum'][ii] == 'unit':
+                    self.zeta = np.tile(1, self.nw)
+                    S = np.tile(1, self.nw)
+                elif case['wave_spectrum'][ii] == 'JONSWAP':
+                    S = JONSWAP(self.w, case['wave_height'][ii], case['wave_period'][ii])
+                    self.zeta = np.sqrt(S)  # wave elevation amplitudes (these are easiest to use)
+                elif case['wave_spectrum'][ii] in ['none', 'still']:
+                    self.zeta = np.zeros(self.nw)
+                    S = np.zeros(self.nw)
+                else:
+                    raise ValueError(f"Wave spectrum input '{case['wave_spectrum']}' not recognized.")
+                self.storeZeta[ii,:] = self.zeta
 
-        self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
-        self.F_hydro_iner    = np.zeros([6,self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
+            else:
+                self.beta = case['wave_heading']
 
-        # loop through each member
-        for mem in self.memberList:
-        
-            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-#            print(mem.name)
+                # make wave spectrum
+                if case['wave_spectrum'] == 'unit':
+                    self.zeta = np.tile(1, self.nw)
+                    S         = np.tile(1, self.nw)
+                elif case['wave_spectrum'] == 'JONSWAP':
+                    S = JONSWAP(self.w, case['wave_height'], case['wave_period'])
+                    self.zeta = np.sqrt(S)    # wave elevation amplitudes (these are easiest to use)
+                elif case['wave_spectrum'] in ['none','still']:
+                    self.zeta = np.zeros(self.nw)
+                    S = np.zeros(self.nw)
+                else:
+                    raise ValueError(f"Wave spectrum input '{case['wave_spectrum']}' not recognized.")
+                self.storeZeta[0,:] = self.zeta
+            # This is not an elegant solution but is required to solve model.analyzeUnloaded
 
-            # loop through each node of the member
-            for il in range(mem.ns):
-#                print(il)
+            #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
-                # only process hydrodynamics if this node is submerged
-                if mem.r[il,2] < 0:
-#                    print("underwater")
+            # TODO: consider current and viscous drift
 
-                    # get wave kinematics spectra given a certain wave spectrum and location
-                    mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.beta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
+            # ----- calculate potential-flow wave excitation force -----
+            caseIndex = np.where(self.headsStored == self.beta)[0]
+            X_BEM_temp = np.reshape(self.X_BEM[caseIndex, :, :],(6,len(self.zeta)))
+            print('sum FBEM = ', np.sum(self.F_BEM))
+            self.F_BEM += X_BEM_temp * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
+            # JvS: looking up added heading using self.beta to calculate F_BEM for heading
+            #      TODO: this needs to be changed once multiple wave headings are evaluated. <<<
+            # --------------------- get constant hydrodynamic values along each member -----------------------------
 
-                    # only compute inertial loads and added mass for members that aren't modeled with potential flow
-                    if mem.potMod==False:
+            # loop through each member
+            for mem in self.memberList:
 
-                        # interpolate coefficients for the current strip
-                        Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
-                        Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
-                        Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
-                        Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+                circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+    #            print(mem.name)
 
+                # loop through each node of the member
+                for il in range(mem.ns):
+    #                print(il)
 
-                        # ----- compute side effects ---------------------------------------------------------
+                    # only process hydrodynamics if this node is submerged
+                    if mem.r[il,2] < 0:
+    #                    print("underwater")
 
-                        if circ:
-                            v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
-                        else:
-                            v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
-                            
-                        if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
-                            v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
-                            
-                         
-                        # added mass
-                        Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
-#                        print(f"Member side added mass diagonals are {Amat[0,0]:6.2e} {Amat[1,1]:6.2e} {Amat[2,2]:6.2e}")
+                        # get wave kinematics spectra given a certain wave spectrum and location
+                        mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.beta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
-                        self.A_hydro_morison += translateMatrix3to6DOF(Amat, mem.r[il,:])    # add to global added mass matrix for Morison members
-                        
-                        # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
-                        Imat = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix (note: the 1 is the Cp, dynamic pressure, term)
-                        #Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
+                        # only compute inertial loads and added mass for members that aren't modeled with potential flow
+                        if mem.potMod==False:
 
-                        for i in range(self.nw):                                             # for each wave frequency...
-
-                            mem.F_exc_iner[il,:,i] = np.matmul(Imat, mem.ud[il,:,i])         # add to global excitation vector (frequency dependent)
-
-                            self.F_hydro_iner[:,i] += translateForce3to6DOF(mem.F_exc_iner[il,:,i], mem.r[il,:])  # add to global excitation vector (frequency dependent)
+                            # interpolate coefficients for the current strip
+                            Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
+                            Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                            Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                            Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
 
 
-                        # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
-                        # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+                            # ----- compute side effects ---------------------------------------------------------
 
-                        if circ:
-                            v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
-                            a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
-                        else:
-                            v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
-                            a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
-                            # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+                            if circ:
+                                v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
+                            else:
+                                v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
 
-                        # added mass
-                        AmatE = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-#                        print(f"Member END  added mass diagonals are {AmatE[0,0]:6.2e} {AmatE[1,1]:6.2e} {AmatE[2,2]:6.2e}")
-                        
-                        self.A_hydro_morison += translateMatrix3to6DOF(AmatE, mem.r[il,:]) # add to global added mass matrix for Morison members
-                        
-                        # inertial excitation
-                        ImatE = rho*v_i * Ca_End*mem.qMat                         # local inertial excitation matrix (note, there is no 1 added to Ca_End because dynamic pressure is handled separately) 
-                        #ImatE = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
+                            if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
+                                v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
 
-                        for i in range(self.nw):                                         # for each wave frequency...
 
-                            #F_exc_iner_temp = np.matmul(ImatE, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
-                            mem.F_exc_a[il,:,i] = np.matmul(ImatE, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+                            # added mass
+                            Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
+    #                        print(f"Member side added mass diagonals are {Amat[0,0]:6.2e} {Amat[1,1]:6.2e} {Amat[2,2]:6.2e}")
 
-                            # >>> may want to add a separate dynamic pressure input <<<
-                            mem.F_exc_p[il,:,i] = mem.pDyn[il,i]*a_i *mem.q                 # add dynamic pressure - positive with q if end A - determined by sign of a_i
-                            #F_exc_iner_temp += mem.pDyn[il,i]*a_i *mem.q                 # add dynamic pressure - positive with q if end A - determined by sign of a_i
+                            self.A_hydro_morison += translateMatrix3to6DOF(Amat, mem.r[il,:])    # add to global added mass matrix for Morison members
 
-                            F_exc_iner_temp = mem.F_exc_a[il,:,i] + mem.F_exc_p[il,:,i] 
-                            mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
+                            # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
+                            Imat = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix (note: the 1 is the Cp, dynamic pressure, term)
+                            #Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
 
-                            self.F_hydro_iner[:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:]) # add to global excitation vector (frequency dependent)
+                            for i in range(self.nw):                                             # for each wave frequency...
+
+                                mem.F_exc_iner[il,:,i] = np.matmul(Imat, mem.ud[il,:,i])         # add to global excitation vector (frequency dependent)
+
+                                self.F_hydro_iner[:,i] += translateForce3to6DOF(mem.F_exc_iner[il,:,i], mem.r[il,:])  # add to global excitation vector (frequency dependent)
+
+
+                            # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                            # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+
+                            if circ:
+                                v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                                a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                            else:
+                                v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                                a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
+                                # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+
+                            # added mass
+                            AmatE = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
+    #                        print(f"Member END  added mass diagonals are {AmatE[0,0]:6.2e} {AmatE[1,1]:6.2e} {AmatE[2,2]:6.2e}")
+
+                            self.A_hydro_morison += translateMatrix3to6DOF(AmatE, mem.r[il,:]) # add to global added mass matrix for Morison members
+
+                            # inertial excitation
+                            ImatE = rho*v_i * Ca_End*mem.qMat                         # local inertial excitation matrix (note, there is no 1 added to Ca_End because dynamic pressure is handled separately)
+                            #ImatE = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
+
+                            for i in range(self.nw):                                         # for each wave frequency...
+
+                                #F_exc_iner_temp = np.matmul(ImatE, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+                                mem.F_exc_a[il,:,i] = np.matmul(ImatE, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+
+                                # >>> may want to add a separate dynamic pressure input <<<
+                                mem.F_exc_p[il,:,i] = mem.pDyn[il,i]*a_i *mem.q                 # add dynamic pressure - positive with q if end A - determined by sign of a_i
+                                #F_exc_iner_temp += mem.pDyn[il,i]*a_i *mem.q                 # add dynamic pressure - positive with q if end A - determined by sign of a_i
+
+                                F_exc_iner_temp = mem.F_exc_a[il,:,i] + mem.F_exc_p[il,:,i]
+                                mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
+
+                                self.F_hydro_iner[:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:]) # add to global excitation vector (frequency dependent)
 
 
 
@@ -782,8 +814,9 @@ class FOWT():
         
         
         # wave PSD for reference
-        results['wave_PSD'][iCase,:] = getPSD(self.zeta)        # wave elevation spectrum
-        
+        results['wave_PSD1'][iCase,:] = getPSD(self.storeZeta[0,:])        # wave elevation spectrum
+        results['wave_PSD2'][iCase,:] = getPSD(self.storeZeta[1,:])        # wave elevation spectrum
+
         '''
         # TEMPORARY CHECK>>>
         import matplotlib.pyplot as plt
