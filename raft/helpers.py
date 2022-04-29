@@ -694,6 +694,16 @@ def getUniqueCaseHeadings(keys, values):
         numberOfHeadings = 1
     return caseHeadings, headingStep, numberOfHeadings # only have unique values in evaluated list, otherwise possibly issues with np.diff
 
+def getSigmaXPSD(psdTBFA, psdTBSS, frequencies, dAngles = 30, d = 10000,thickness= 83):
+    """Function to retrieve Axial stress (sigma_x) around tower base circumference using tower base bending"""
+    angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
+    angleMeshFA, psdTBFAMesh = np.meshgrid(angles, psdTBFA, sparse = True)
+    angleMeshSS, psdTBSSMesh = np.meshgrid(angles, psdTBSS, sparse = True)
+    Izz = np.pi/8*thickness*d**3 # Bending moment of inertia, assume thin walled
+
+    sigmaX = ((psdTBFAMesh*np.cos(angleMeshFA)+psdTBSSMesh*np.sin(angleMeshSS))*d/2)/Izz # Return
+    ANGLESMesh, FREQMesh = np.meshgrid(angles, frequencies)
+    return sigmaX, ANGLESMesh, FREQMesh
 if __name__ == '__main__':
     
     
