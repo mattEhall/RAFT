@@ -701,8 +701,8 @@ def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50, endpo
     # angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
     angleMeshFA, TBFAMesh = np.meshgrid(angles, TBFA)
     angleMeshSS, TBSSMesh = np.meshgrid(angles, TBSS)
-    print('TBFA',TBFA)
-    print('TBFSS', TBSS)
+    # print('TBFA',TBFA)
+    # print('TBFSS', TBSS)
     Izz = np.pi/8*thickness*d**3 # Bending moment of inertia, assume thin walled
 
     sigmaX = ((TBFAMesh*np.cos(angleMeshFA)+TBSSMesh*np.sin(angleMeshSS))*d/2)/Izz # Return?

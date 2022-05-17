@@ -531,7 +531,7 @@ class Model():
         # print('F_aero', fowt.F_aero)
         # print("F_iner = ", fowt.F_hydro_iner)
         # print(" sum F_ = ", np.sum(fowt.F_hydro_iner))
-        print('A_aero', fowt.A_aero)
+        # print('A_aero', fowt.A_aero)
         print("F_bem_heave = ", np.abs(fowt.F_BEM))
         # print("F_bem_yaw = ", np.abs(fowt.F_BEM[5, :]))
         # print('FBEM rms', getRMS(fowt.F_BEM[],self.w))
