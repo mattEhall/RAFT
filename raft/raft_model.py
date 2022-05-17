@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
+from fatiguepy import *
 
 import moorpy as mp
 import raft.raft_fowt  as fowt
@@ -47,8 +48,10 @@ class Model():
         
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
-                
-        
+
+        self.numAngles = int(getFromDict(design['settings'],'numAngles', default=50))
+        self.anglesArray = np.linspace(0,2*np.pi,self.numAngles, endpoint=False)
+
         # process mooring information 
         self.ms = mp.System()
         self.ms.parseYAML(design['mooring'])
@@ -172,12 +175,20 @@ class Model():
         self.results['case_metrics']['AxRNA_std'] = np.zeros(nCases)
         self.results['case_metrics']['AxRNA_max'] = np.zeros(nCases)
         self.results['case_metrics']['AxRNA_PSD'] = np.zeros([nCases,self.nw])
-        # tower base bending moment
+        # tower base bending moment FA
         self.results['case_metrics']['Mbase_avg'] = np.zeros(nCases) 
         self.results['case_metrics']['Mbase_std'] = np.zeros(nCases)
         self.results['case_metrics']['Mbase_max'] = np.zeros(nCases)
         self.results['case_metrics']['Mbase_PSD'] = np.zeros([nCases,self.nw])
-        self.results['case_metrics']['Mbase_DEL'] = np.zeros(nCases)        
+        self.results['case_metrics']['Mbase_sig'] = np.zeros([nCases,self.nw], dtype=complex)
+        self.results['case_metrics']['Mbase_DEL'] = np.zeros(nCases)
+        # tower base bending moment SS
+        self.results['case_metrics']['MbaseSS_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['MbaseSS_std'] = np.zeros(nCases)
+        self.results['case_metrics']['MbaseSS_max'] = np.zeros(nCases)
+        self.results['case_metrics']['MbaseSS_PSD'] = np.zeros([nCases,self.nw])
+        self.results['case_metrics']['MbaseSS_sig'] = np.zeros([nCases,self.nw], dtype=complex)
+        self.results['case_metrics']['MbaseSS_DEL'] = np.zeros(nCases)
         # rotor speed
         self.results['case_metrics']['omega_avg'] = np.zeros(nCases)    
         self.results['case_metrics']['omega_std'] = np.zeros(nCases)    
@@ -209,6 +220,9 @@ class Model():
         self.results['case_metrics']['wind_PSD'] = np.zeros([nCases, self.nw])
         self.results['case_metrics']['wave_PSD1'] = np.zeros([nCases, self.nw])
         self.results['case_metrics']['wave_PSD2'] = np.zeros([nCases, self.nw])
+
+        # store Damage equivalant Load from bending moments
+        self.results['case_metrics']['DEL_angles'] = np.zeros([nCases, self.numAngles])
 
         # calculate the system's constant properties
         for fowt in self.fowtList:
@@ -284,7 +298,8 @@ class Model():
                 print(f"yaw (deg)          {metrics[  'yaw_avg'][iCase] :10.2e}  {metrics[  'yaw_std'][iCase] :10.2e}  {metrics['yaw_max'  ][iCase] :10.2e}")
                 print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase] :10.2e}  {metrics['AxRNA_std'][iCase] :10.2e}  {metrics['AxRNA_max'][iCase] :10.2e}")
                 print(f"tower bending (Nm) {metrics['Mbase_avg'][iCase] :10.2e}  {metrics['Mbase_std'][iCase] :10.2e}  {metrics['Mbase_max'][iCase] :10.2e}")
-                
+                print(f"tower bending SS(Nm) {metrics['MbaseSS_avg'][iCase] :10.2e}  {metrics['MbaseSS_std'][iCase] :10.2e}  {metrics['MbaseSS_max'][iCase] :10.2e}")
+
                 print(f"rotor speed (RPM)  {metrics['omega_avg'][iCase] :10.2e}  {metrics['omega_std'][iCase] :10.2e}  {metrics['omega_max'][iCase] :10.2e}")
                 print(f"blade pitch (deg)  {metrics['bPitch_avg'][iCase] :10.2e}  {metrics['bPitch_std'][iCase] :10.2e} ")
                 print(f"rotor power        {metrics['power_avg'][iCase] :10.2e} ")
@@ -338,7 +353,7 @@ class Model():
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
         
-        #print("Equilibrium'3' platform positions/rotations:")
+        print("Equilibrium'3' platform positions/rotations:")
         #printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
@@ -481,7 +496,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=1):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=1, F_BEM_plot =0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -513,8 +528,42 @@ class Model():
         B_lin = fowt.B_aero + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
         C_lin =               fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
         F_lin = fowt.F_aero +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
-        
-        # start fixed point iteration loop for dynamics
+        # print('F_aero', fowt.F_aero)
+        # print("F_iner = ", fowt.F_hydro_iner)
+        # print(" sum F_ = ", np.sum(fowt.F_hydro_iner))
+        print('A_aero', fowt.A_aero)
+        print("F_bem_heave = ", np.abs(fowt.F_BEM))
+        # print("F_bem_yaw = ", np.abs(fowt.F_BEM[5, :]))
+        # print('FBEM rms', getRMS(fowt.F_BEM[],self.w))
+        if F_BEM_plot:
+            freqMesh, headingMesh = np.meshgrid(fowt.w,fowt.headsStored)
+            figF, axF = plt.subplots(nrows= 3, ncols=2, sharex=True)
+            axF[0, 0].contourf(freqMesh,headingMesh, np.abs(fowt.F_BEM_ALL[:,0,:]))  # surge
+            axF[1, 0].contourf(freqMesh,headingMesh, np.abs(fowt.F_BEM_ALL[:,1,:]))
+            axF[2, 0].contourf(freqMesh,headingMesh, np.abs(fowt.F_BEM_ALL[:,2,:]))
+            axF[0, 1].contourf(freqMesh,headingMesh, np.abs(fowt.F_BEM_ALL[:,3,:]))
+            axF[1, 1].contourf(freqMesh,headingMesh, np.abs(fowt.F_BEM_ALL[:,4,:]))
+            axF[2, 1].contourf(freqMesh,headingMesh, np.abs(fowt.F_BEM_ALL[:,5,:]))
+            axF[0,0].set_title('Surge Direction')
+            axF[1, 0].set_title('Sway Direction')
+            axF[2,0].set_title('Heave Direction')
+            axF[0, 1].set_title('Roll Direction')
+            axF[1, 1].set_title('Pitch Direction')
+            axF[2, 1].set_title('Yaw Direction')
+            axF[2,0].set_xlabel('frequency (Hz)')
+            axF[2, 1].set_xlabel('frequency (Hz)')
+            axF[0,0].set_ylabel('Wave Heading (deg)')
+            axF[1, 0].set_ylabel('Wave Heading (deg)')
+            axF[2, 0].set_ylabel('Wave Heading (deg)')
+            figF.suptitle('Wave force from BEM (F_BEM) for every angle')
+            # for col in range(2):
+            #     for row in range(3):
+            #         figF.colorbar(axF, ax = axF[row,col])
+            # freqMesh, headingMesh = np.meshgrid(self.w,self.headsStored)
+            # figAng, axAng = plt.subplots(3,2)
+            # axAng[0,0].contour(freqMesh,headingMesh,self.X_BEM[:,0,:])
+
+            # start fixed point iteration loop for dynamics
         for iiter in range(nIter):
             
             # initialize/zero total system coefficient arrays
@@ -523,7 +572,7 @@ class Model():
             C_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total stiffness matrix [N/m, N, N-m]
             F_tot = np.zeros([self.nDOF,self.nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
 
-            Z  = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total system impedance matrix
+            Z = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total system impedance matrix
 
 
             # a loop could be added here for an array
@@ -540,7 +589,6 @@ class Model():
             B_tot[:,:,:] = B_lin           + B_linearized[:,:,None]
             C_tot[:,:,:] = C_lin[:,:,None]
             F_tot[:  ,:] = F_lin           + F_linearized
-
 
             for ii in range(self.nw):
                 # form impedance matrix
@@ -727,51 +775,116 @@ class Model():
     def plotResponses_extended(self):
         '''Plots more power spectral densities of the available response channels for each case.'''
 
-        fig, ax = plt.subplots(10, 1, sharex=True)
+        fig, ax = plt.subplot_mosaic([
+            ['surge', 'AxRNA'],
+            ['sway', 'MBaseFA'],
+            ['heave', 'MBaseSS'],
+            ['pitch', 'Wave1'],
+            ['roll', 'Wave2'],
+            ['yaw', 'Wind']
+            ])#subplots(11, 1, sharex=True)
 
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
 
         for iCase in range(nCases):
-            ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
-            ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
-            ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
-            ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
-            ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
-            ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
-            ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
-            ax[7].plot(self.w / TwoPi,
-                       TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
-            ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD1'][iCase, :],
-                       label=f'case {iCase + 1}')  # wave spectrum
-            ax[9].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD2'][iCase, :],
-                       label=f'case {iCase + 1}')  # wave spectrum
+            ax['surge'].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
+            ax['sway'].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
+            ax['heave'].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
+            ax['pitch'].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
+            ax['roll'].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
+            ax['yaw'].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
+            ax['AxRNA'].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
+            ax['MBaseFA'].plot(self.w / TwoPi, TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
+            ax['MBaseSS'].plot(self.w / TwoPi, TwoPi * metrics['MbaseSS_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
+            ax['Wave1'].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD1'][iCase, :], label=f'ws 1 case {iCase + 1}')  # wave spectrum
+            if not np.all(metrics['wave_PSD2'][iCase, :] == 0):
+                ax['Wave2'].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD2'][iCase, :],linestyle='dashed', label=f'ws 2 case {iCase + 1}')  # wave spectrum
+            ax['Wind'].plot(self.w / TwoPi, TwoPi * metrics['wind_PSD'][iCase, :], label=f'case {iCase + 1}')  # wind spectrum
             # need a variable number of subplots for the mooring lines
             # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
-        ax[0].set_ylabel('surge \n' + r'(m$^2$/Hz)')
-        ax[1].set_ylabel('sway \n' + r'(m$^2$/Hz)')
-        ax[2].set_ylabel('heave \n' + r'(m$^2$/Hz)')
-        ax[3].set_ylabel('pitch \n' + r'(deg$^2$/Hz)')
-        ax[4].set_ylabel('roll \n' + r'(deg$^2$/Hz)')
-        ax[5].set_ylabel('yaw \n' + r'(deg$^2$/Hz)')
-        ax[6].set_ylabel('nac. acc. \n' + r'((m/s$^2$)$^2$/Hz)')
-        ax[7].set_ylabel('twr. bend \n' + r'((Nm)$^2$/Hz)')
-        ax[8].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
-        ax[9].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
+        ax['surge'].set_ylabel('surge \n' + r'(m$^2$/Hz)')
+        ax['sway'].set_ylabel('sway \n' + r'(m$^2$/Hz)')
+        ax['heave'].set_ylabel('heave \n' + r'(m$^2$/Hz)')
+        ax['pitch'].set_ylabel('pitch \n' + r'(deg$^2$/Hz)')
+        ax['roll'].set_ylabel('roll \n' + r'(deg$^2$/Hz)')
+        ax['yaw'].set_ylabel('yaw \n' + r'(deg$^2$/Hz)')
+        ax['AxRNA'].set_ylabel('nac. acc. \n' + r'((m/s$^2$)$^2$/Hz)')
+        ax['MBaseFA'].set_ylabel('twr. bend FA \n' + r'((Nm)$^2$/Hz)')
+        ax['MBaseSS'].set_ylabel('twr. bend SS \n' + r'((Nm)$^2$/Hz)')
+        ax['Wave1'].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
+        ax['Wave2'].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
+        ax['Wind'].set_ylabel('wind speed.\n' + r'((m/s)$^2$/Hz)')
 
         # ax[0].set_ylim([0.0, 25])
         # ax[1].set_ylim([0.0, 15])
         # ax[2].set_ylim([0.0, 4])
         # ax[-1].set_xlim([0.03, 0.15])
-        ax[-1].set_xlabel('frequency (Hz)')
+        ax['yaw'].set_xlabel('frequency (Hz)')
+        ax['Wind'].set_xlabel('frequency (Hz)')
 
         # if nCases > 1:
-        ax[-1].legend()
+        ax['Wind'].legend()
+        ax['Wave1'].legend()
+        ax['Wave2'].legend()
+        # ax[''].legend()
         fig.suptitle('RAFT power spectral densities')
 
-        
-        
+    def plotTowerBaseResponse(self):
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+
+        for iCase in range(nCases):
+            sigmaX, ANGLESMesh, FREQMesh = getSigmaXPSD(TBFA=metrics['Mbase_sig'][iCase,:], TBSS=metrics['MbaseSS_sig'][iCase,:], frequencies=self.w, angles=self.anglesArray)
+            plt.figure()
+            ax = plt.axes(projection = '3d')
+            ax.plot_surface(rad2deg(ANGLESMesh), FREQMesh/TwoPi, TwoPi*sigmaX, cmap=plt.cm.jet, rstride=1)
+            ax.set_xlabel('angle around TB (deg)')
+            ax.set_ylabel('frequency (Hz)')
+            ax.set_zlabel('sigma_x (MPa^2/Hz)')
+            ax.set_xbound(0, 360)
+            ax.set_ybound(0, 0.4)
+
+            DK_ps = np.zeros([self.numAngles,40])
+
+            for iAngles in range(self.numAngles):
+            #     DK[iAngles] = Dirlik.DK(5.56, 1.62*10**22, sigmaX[iAngles,:], self.w, 0, 0 )
+            #     print(DK[iAngles].Damage())
+                moments = prob_moment.Probability_Moment(sigmaX[:,iAngles], self.w)
+                sigma_max = 10 * moments.momentn(0) ** 0.5
+                stress_range = np.linspace(0, sigma_max, 40)
+                DK_temp = Dirlik.DK(6, 1.62*10**22, sigmaX[:,iAngles], self.w, 30*364*24*3600,  stress_range)
+                DK_ps[iAngles, :] = DK_temp.counting_cycles()
+                metrics['DEL_angles'][iCase, iAngles] = (np.dot(DK_temp.counting_cycles(),stress_range**6)/np.sum(DK_temp.counting_cycles()))**(1/6)
+
+        plt.figure()
+        for iCase in range(nCases):
+            plt.plot(rad2deg(self.anglesArray), metrics['DEL_angles'][iCase,:],  label=f'Case {iCase}')
+        plt.legend()
+        plt.xlabel('Location around TB circumference (deg)')
+        plt.ylabel('Sigma_x (MPa)')
+        plt.xlim([0,360])
+        plt.title('Fatigue Damage Equivalant Load Around TB')
+        plt.grid()
+        # TODO: Seperate calculation of FDEL and Plotting in seperate methods, they can then be added to  results print.
+
+            # fig = plt.figure(figsize=(8, 8))
+            # ax1 = fig.add_subplot()
+            # stressMesh, angMesh = np.meshgrid(stress_range, anglesvec)
+            # pos = ax1.imshow(DK_ps,
+            #             cmap='rainbow',
+            #             interpolation='nearest',
+            #             extent = [stress_range[0],stress_range[-1],anglesvec[0],anglesvec[-1]],
+            #             aspect = stress_range[-1]/anglesvec[-1])#bar3d(angMesh.flatten(),
+            # fig.colorbar(pos)
+                      # stressMesh.flatten(),
+                      # np.zeros_like(DK_ps.flatten()),
+                      # angMesh[1,1]-angMesh[0,0],
+                      # stressMesh[1,1]-stressMesh[0,0],
+                      # DK_ps.flatten())
+
 
     def preprocess_HAMS(self, dw=0, wMax=0, dz=0, da=0):
         '''This generates a mesh for the platform, runs a BEM analysis on it

@@ -14,7 +14,7 @@ from scipy.interpolate      import PchipInterpolator
 from scipy.special          import modstruve, iv
 
 
-from raft.helpers                import rotationMatrix
+from raft.helpers                import rotationMatrix, deg2rad
 
 from wisdem.ccblade.ccblade import CCBlade, CCAirfoil
 
@@ -335,7 +335,7 @@ class Rotor:
         loads, derivs = self.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
         
         Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
-        
+
         # extract derivatives of interest
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
         dT_dOm = np.atleast_1d(np.diag(derivs["dT"]["dOmega"])) / rpm2radps
@@ -429,8 +429,7 @@ class Rotor:
 
 
         f_aero = T_ext  # wind thrust force excitation spectrum
-        
-        
+        # print("b_aero", b_aer)
         return F_aero0, f_aero, a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero
         
         

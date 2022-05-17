@@ -9,6 +9,7 @@ settings:                   # global Settings
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
     nIter        :   4      # sets how many iterations to perform in Model.solveDynamics()
     numThreads   :  16       # number of threads used in pyHams
+    numAngles    :  50      # number of angles around the tower to be evaluated
 site:
     water_depth : 200        # [m]      uniform water depth
     rho_water   : 1025.0     # [kg/m^3] water density
@@ -20,10 +21,67 @@ cases:
 
     keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, add_waveheading, wave_spectrum2, wave_period2, wave_height2, wave_heading2]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)          bool        string            (s)           (m)           (deg)
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            20,          3,             -90]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           30,              True,           JONSWAP,            25,          4,             -120]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45,              True,           JONSWAP,            18,          4,             -90]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45,              False,           JONSWAP,            25,          4,             -90]
+        # Base case layout
+#        -  [    3,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            20,          3,             60 ]
+
+        # Develop set for pyhams runs (this will speed up following test runs if ph.run_hams is disabled)
+##        -  [    11,         -360,     0,     operating,          0,        JONSWAP,         12,         6,          -360,               True,           JONSWAP,            25,          3,             -355 ]
+#        -  [    11,         360,     0,     operating,          0,        JONSWAP,         12,         6,           360,               True,           JONSWAP,            25,          3,             355 ]
+#        -  [    11,         0,     0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            25,          3,             0 ]
+
+
+        # Test cases full symmetry floater (-120, 0, 120 deg)
+#        -  [    0,        240,     0,     operating,          0,        JONSWAP,         12,         6,           240,               True,           JONSWAP,            25,          3,             240 ]
+#        -  [    0,         0,     0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            25,          3,             0 ]
+#        -  [ 0,         120,     0,     operating,          0,        JONSWAP,         12,         6,           120,               True,           JONSWAP,            25,          3,             120 ]
+
+        # Test cases full symmetry floater (300, 60, 180 deg)
+        -  [    0,         300,     0,     operating,          0,        JONSWAP,         12,         6,          300,               False,           JONSWAP,            25,          3,             300 ]
+        -  [    0,         60,     0,     operating,          0,        JONSWAP,         12,         6,           60,               False,           JONSWAP,            25,          3,             60 ]
+        -  [    0,         180,     0,     operating,          0,        JONSWAP,         12,         6,           180,               False,           JONSWAP,            25,          3,             180]
+
+
+        # Test cases off-symmetry but equal misalignment (-90, 30, 150 deg)
+#        - [ 11,         270,     0,     operating,          0,        JONSWAP,         12,         6,           270,               True,           JONSWAP,            25,          3,             270 ]
+#        - [ 11,         30,     0,     operating,          0,        JONSWAP,         12,         6,           30,               True,           JONSWAP,            25,          3,             30 ]
+#        - [ 11,         150,     0,     operating,          0,        JONSWAP,         12,         6,           150,               True,           JONSWAP,            25,          3,             150 ]
+
+        # Test opposite misalignment angles (-90, 90 deg)
+#        - [ 11,         -90,     0,     operating,          0,        JONSWAP,         12,         6,           -90,               True,           JONSWAP,            25,          3,             -90 ]
+#        - [ 11,         90,     0,     operating,          0,        JONSWAP,         12,         6,           90,               True,           JONSWAP,            25,          3,             90 ]
+
+        # Test opposite misalignment angles (-5, 5 deg)
+#        - [ 11,         -5,     0,     operating,          0,        JONSWAP,         12,         6,           -5,               True,           JONSWAP,            25,          3,             -5 ]
+#        - [ 11,         5,     0,     operating,          0,        JONSWAP,         12,         6,           5,               True,           JONSWAP,            25,          3,             5 ]
+
+      # Test opposite misalignment angles (0, 180 deg)
+#        - [ 11,         0,     0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            25,          3,             180 ]
+#        - [ 11,         180,     0,     operating,          0,        JONSWAP,         12,         6,          180,               True,           JONSWAP,            25,          3,             0 ]
+
+      # Test opposite misalignment angles (-60, 300 deg)
+#        - [ 11,         -60,     0,     operating,          0,        JONSWAP,         12,         6,           -60,               True,           JONSWAP,            25,          3,             -60 ]
+#        - [ 11,         300,     0,     operating,          0,        JONSWAP,         12,         6,          300,               True,           JONSWAP,            25,          3,             300 ]
+
+
+   # Test cases full symmetry floater (-60, 60, 180 deg)
+#        -  [    11,         -60,     IIB_NTM,     operating,          0,        none,         12,         6,          -60,               False,           JONSWAP,            25,          3,             -60 ]
+#        -  [    11,         60,     IIB_NTM,     operating,          0,        none,         12,         6,           60,               False,           JONSWAP,            25,          3,             60 ]
+#        -  [ 11,         180,     IIB_NTM,     operating,          0,        none,         12,         6,           180,               False,           JONSWAP,            25,          3,             180 ]
+
+          #        - [ 16,         45,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           45,               True,           JONSWAP,            25,          3,             45 ]
+#        - [ 16,         60,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           60,               True,           JONSWAP,            25,          3,             60 ]
+#        - [ 16,         75,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           75,               True,           JONSWAP,            25,          3,             75 ]
+#        -  [    16,         90,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           90,               True,           JONSWAP,            25,          3,             90 ]
+#        -  [    16,         105,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           105,               True,           JONSWAP,            25,          3,             105 ]
+#        -  [    11,         150,     0,     operating,          0,        JONSWAP,         12,         6,           150,               True,           JONSWAP,            25,          3,             150]
+
+          # -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           30,              True,           JONSWAP,            25,          4,             -120]
+       # -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45,              True,           JONSWAP,            18,          4,             -90]
+       # -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           45,              False,           JONSWAP,            25,          4,             -90]
+#        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               False,           JONSWAP,            20,          3,             0 ]
+#        -  [    16,         30,            0,     operating,          0,        JONSWAP,         12,         6,           30,               False,           JONSWAP,            20,          3,             0 ]
+#        -  [    16,         60,            0,     operating,          0,        JONSWAP,         12,         6,           60,               False,           JONSWAP,            20,          3,             0 ]
+#        -  [    16,         120,            0,     operating,          0,        JONSWAP,         12,         6,           120,               False,           JONSWAP,            20,          3,             0 ]
 
 
 turbine:
@@ -1088,7 +1146,7 @@ turbine:
 
 platform:
 
-    potModMaster :   0      # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
+    potModMaster :   1      # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
     dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
 
     members:   # list all members here
@@ -1141,8 +1199,8 @@ platform:
         cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
         
-      - name      :  pontoon                   # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+      - name      :  pontoon                   # [-]    an identifier (no longer has to be number)
+        type      :  2                         # [-]
         rA        :  [  5  , 0, -16.5]         # [m]    end A coordinates
         rB        :  [ 45.5, 0, -16.5]         # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
@@ -1160,10 +1218,10 @@ platform:
         rho_shell :  7850                      # [kg/m3]
         l_fill    :  43.0                      # [m]
         rho_fill  :  1025.0                    # [kg/m3]
-        
-        
-      - name      :  upper_support             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+
+
+      - name      :  upper_support             # [-]    an identifier (no longer has to be number)
+        type      :  2                         # [-]
         rA        :  [  5  , 0, 14.545]        # [m]    end A coordinates
         rB        :  [ 45.5, 0, 14.545]        # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
@@ -1178,8 +1236,8 @@ platform:
         Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-     
+        rho_shell :  7850                      # [kg/m3]
+
 
 mooring:
     water_depth: 200                                  # [m]       uniform water depth

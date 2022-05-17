@@ -1,4 +1,6 @@
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -679,14 +681,14 @@ def getUniqueCaseHeadings(keys, values):
     for wh in wave_headings:
         if wh not in caseHeadings:
             caseHeadings.append(wh)
-
+    # print(caseHeadings)
     maxHeading = max(caseHeadings)
     minHeading = min(caseHeadings)
     if len(caseHeadings) == 2:
         headingStep = maxHeading - minHeading
         numberOfHeadings = 2
     elif len(caseHeadings) > 2:
-        headingStep = np.min(np.abs(np.diff(caseHeadings)))
+        headingStep = np.min(np.abs(np.diff(np.sort(caseHeadings))))
         numberOfHeadings = int((maxHeading - minHeading) / headingStep + 1)
         # this is different from only two headings, as it requires headings in between
     else:
@@ -694,16 +696,20 @@ def getUniqueCaseHeadings(keys, values):
         numberOfHeadings = 1
     return caseHeadings, headingStep, numberOfHeadings # only have unique values in evaluated list, otherwise possibly issues with np.diff
 
-def getSigmaXPSD(psdTBFA, psdTBSS, frequencies, dAngles = 30, d = 10000,thickness= 83):
+def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50, endpoint=False), d = 10,thickness= 0.083):
     """Function to retrieve Axial stress (sigma_x) around tower base circumference using tower base bending"""
-    angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
-    angleMeshFA, psdTBFAMesh = np.meshgrid(angles, psdTBFA, sparse = True)
-    angleMeshSS, psdTBSSMesh = np.meshgrid(angles, psdTBSS, sparse = True)
+    # angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
+    angleMeshFA, TBFAMesh = np.meshgrid(angles, TBFA)
+    angleMeshSS, TBSSMesh = np.meshgrid(angles, TBSS)
+    print('TBFA',TBFA)
+    print('TBFSS', TBSS)
     Izz = np.pi/8*thickness*d**3 # Bending moment of inertia, assume thin walled
 
-    sigmaX = ((psdTBFAMesh*np.cos(angleMeshFA)+psdTBSSMesh*np.sin(angleMeshSS))*d/2)/Izz # Return
+    sigmaX = ((TBFAMesh*np.cos(angleMeshFA)+TBSSMesh*np.sin(angleMeshSS))*d/2)/Izz # Return?
+    print(sigmaX)
+    # sigmaX = psdTBFAMesh*(np.cos(angleMeshFA)*d/2/Izz)**2+psdTBSSMesh*(np.sin(angleMeshSS)*d/2/Izz)**2
     ANGLESMesh, FREQMesh = np.meshgrid(angles, frequencies)
-    return sigmaX, ANGLESMesh, FREQMesh
+    return getPSD(sigmaX/10**6), ANGLESMesh, FREQMesh
 if __name__ == '__main__':
     
     
