@@ -24,10 +24,14 @@ model.analyzeCases(display=1)
 # Plot the power spectral densities from the load cases
 model.plotResponses_extended()
 
-model.plotTowerBaseResponse()
+model.plotTowerBaseResponse(include_surface = True)
+model.plotTowerBaseResponse(plot = 'polar')
 
 # Visualize the system in its most recently evaluated mean offset position
-model.plot(hideGrid=True)
+model.plot(hideGrid=False)
+
+# print(model.results)
+# print(model.Xi)
 
 plt.show()
 for i in plt.get_fignums():

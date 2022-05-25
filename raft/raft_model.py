@@ -49,8 +49,8 @@ class Model():
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
 
-        self.numAngles = int(getFromDict(design['settings'],'numAngles', default=50))
-        self.anglesArray = np.linspace(0,2*np.pi,self.numAngles, endpoint=False)
+        self.numAngles = int(getFromDict(design['settings'],'numAngles', default=73)) #to cover 0 to 360 in steps of 5 for calculation of stress around tb
+        self.anglesArray = np.linspace(0,2*np.pi,self.numAngles)
 
         # process mooring information 
         self.ms = mp.System()
@@ -257,8 +257,10 @@ class Model():
             self.calcMooringAndOffsets()
             
             # update values based on offsets if applicable
+
             for fowt in self.fowtList:
-                fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
+                # print('RMS value pitch and roll', (fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
+                fowt.calcTurbineConstants(case, ptfm_pitch=(fowt.Xi0[4]**2+fowt.Xi0[3]**2)**0.5)
                 # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
             
             # (could solve mooring and offsets a second time, but likely overkill)
@@ -528,13 +530,7 @@ class Model():
         B_lin = fowt.B_aero + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
         C_lin =               fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
         F_lin = fowt.F_aero +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
-        # print('F_aero', fowt.F_aero)
-        # print("F_iner = ", fowt.F_hydro_iner)
-        # print(" sum F_ = ", np.sum(fowt.F_hydro_iner))
-        # print('A_aero', fowt.A_aero)
-        print("F_bem_heave = ", np.abs(fowt.F_BEM))
-        # print("F_bem_yaw = ", np.abs(fowt.F_BEM[5, :]))
-        # print('FBEM rms', getRMS(fowt.F_BEM[],self.w))
+
         if F_BEM_plot:
             freqMesh, headingMesh = np.meshgrid(fowt.w,fowt.headsStored)
             figF, axF = plt.subplots(nrows= 3, ncols=2, sharex=True)
@@ -831,44 +827,53 @@ class Model():
         # ax[''].legend()
         fig.suptitle('RAFT power spectral densities')
 
-    def plotTowerBaseResponse(self):
+    def plotTowerBaseResponse(self, plot = 'default', include_surface = False):
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
 
 
         for iCase in range(nCases):
             sigmaX, ANGLESMesh, FREQMesh = getSigmaXPSD(TBFA=metrics['Mbase_sig'][iCase,:], TBSS=metrics['MbaseSS_sig'][iCase,:], frequencies=self.w, angles=self.anglesArray)
-            plt.figure()
-            ax = plt.axes(projection = '3d')
-            ax.plot_surface(rad2deg(ANGLESMesh), FREQMesh/TwoPi, TwoPi*sigmaX, cmap=plt.cm.jet, rstride=1)
-            ax.set_xlabel('angle around TB (deg)')
-            ax.set_ylabel('frequency (Hz)')
-            ax.set_zlabel('sigma_x (MPa^2/Hz)')
-            ax.set_xbound(0, 360)
-            ax.set_ybound(0, 0.4)
 
             DK_ps = np.zeros([self.numAngles,40])
+            if include_surface == True:
+                plt.figure()
+                ax = plt.axes(projection='3d')
+                ax.plot_surface(np.rad2deg(ANGLESMesh), FREQMesh / TwoPi, TwoPi * sigmaX,
+                                cmap=plt.cm.jet)  # , rstride=1)
+                ax.set_xlabel('angle around TB (deg)')
+                ax.set_ylabel('frequency (Hz)')
+                ax.set_zlabel('sigma_x (MPa^2/Hz)')
+                ax.set_xbound(0, 360)
+                ax.set_ybound(0, 0.4)
 
             for iAngles in range(self.numAngles):
             #     DK[iAngles] = Dirlik.DK(5.56, 1.62*10**22, sigmaX[iAngles,:], self.w, 0, 0 )
             #     print(DK[iAngles].Damage())
                 moments = prob_moment.Probability_Moment(sigmaX[:,iAngles], self.w)
-                sigma_max = 10 * moments.momentn(0) ** 0.5
+                sigma_max = 6 * moments.momentn(0) ** 0.5
                 stress_range = np.linspace(0, sigma_max, 40)
                 DK_temp = Dirlik.DK(6, 1.62*10**22, sigmaX[:,iAngles], self.w, 30*364*24*3600,  stress_range)
                 DK_ps[iAngles, :] = DK_temp.counting_cycles()
                 metrics['DEL_angles'][iCase, iAngles] = (np.dot(DK_temp.counting_cycles(),stress_range**6)/np.sum(DK_temp.counting_cycles()))**(1/6)
 
         plt.figure()
-        for iCase in range(nCases):
-            plt.plot(rad2deg(self.anglesArray), metrics['DEL_angles'][iCase,:],  label=f'Case {iCase}')
+        if plot == 'polar':
+            plt.axes(projection = 'polar')
+            plt.thetagrids()
+            for iCase in range(nCases):
+                plt.plot(self.anglesArray, metrics['DEL_angles'][iCase,:],  label=f'Case {iCase+1}')
+        else:
+            plt.ylabel('Sigma_x (MPa)')
+            plt.xlim([0,360])
+            for iCase in range(nCases):
+                plt.plot(np.rad2deg(self.anglesArray), metrics['DEL_angles'][iCase,:],  label=f'Case {iCase+1}, ')
         plt.legend()
         plt.xlabel('Location around TB circumference (deg)')
-        plt.ylabel('Sigma_x (MPa)')
-        plt.xlim([0,360])
-        plt.title('Fatigue Damage Equivalant Load Around TB')
-        plt.grid()
+        plt.title('Fatigue Damage Equivalant Load Around TB [MPa]')
+
         # TODO: Seperate calculation of FDEL and Plotting in seperate methods, they can then be added to  results print.
+
 
             # fig = plt.figure(figsize=(8, 8))
             # ax1 = fig.add_subplot()

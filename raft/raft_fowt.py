@@ -126,7 +126,7 @@ class FOWT():
         __, __, numberOfHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
         self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
-        self.X_BEM = np.zeros([numberOfHeadings,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
+        self.X_BEM = np.zeros([73,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         self.storeZeta = np.zeros([2, self.nw])
         self.F_BEM_ALL = np.zeros([numberOfHeadings, 6, self.nw], dtype=complex)
@@ -407,8 +407,8 @@ class FOWT():
             # read the HAMS WAMIT-style output files
             addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
             M, P, R, I, w3, heads = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)
-            self.headsStored = heads # JvS: Save heads for np.where for proper F_BEM
-            print(self.headsStored)
+            self.headsStored = heads # JvS: Save heads for np.where for calculating right F_BEM
+            # print(self.headsStored)
             # interpole to the frequencies RAFT is using
             addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
             dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
@@ -419,7 +419,6 @@ class FOWT():
             self.A_BEM = self.rho_water * addedMassInterp
             self.B_BEM = self.rho_water * dampingInterp                                 
             self.X_BEM = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
-            print('size X_BEM = ', self.X_BEM.shape)
             # HAMS results error checks  >>> any more we should have? <<<
             if np.isnan(self.A_BEM).any():
                 #print("NaN values detected in HAMS calculations for added mass. Check the geometry.")
@@ -460,12 +459,13 @@ class FOWT():
         if self.aeroMod > 0 and case['wind_speed'] > 0.0:
         
             F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch)  # get values about hub
-            
+
             # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
             rHub = np.array([0, 0, self.hHub])
-            wind_heading = deg2rad(case['wind_heading'])
-            rotateToFloaterOrientation = rotationMatrix(0, 0, -wind_heading) #minus, because rotating back to floater reference frame
+            wind_heading = np.deg2rad(case['wind_heading'])
+            rotateToFloaterOrientation = rotationMatrix(0, 0, wind_heading) #positive, because rotating to hub orientation wrt floater reference frame
 
+            print(rotateToFloaterOrientation)
 
             # F_aero0 = np.matmul(rotationMatrix(0, 0, wind_heading), F_aero0)
             # f_aero = np.matmul(rotationMatrix(0, 0, wind_heading), f_aero)
@@ -551,7 +551,7 @@ class FOWT():
             # print('Headings stored', self.headsStored)
             # print('Beta = ', self.beta)
             caseIndex = np.where(self.headsStored == self.beta)[0]
-            # print('caseIndex = ', caseIndex)
+
             X_BEM_temp = np.reshape(self.X_BEM[caseIndex, :, :], (6, len(self.zeta)))
 
             self.F_BEM += X_BEM_temp * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
@@ -595,7 +595,7 @@ class FOWT():
     #                    print("underwater")
 
                         # get wave kinematics spectra given a certain wave spectrum and location
-                        mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, deg2rad(self.beta), self.w, self.k, self.depth, mem.r[il,:], self.nw)
+                        mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, np.deg2rad(self.beta), self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
                         # only compute inertial loads and added mass for members that aren't modeled with potential flow
                         if mem.potMod==False:
@@ -789,33 +789,43 @@ class FOWT():
             var1 = 0
             var2 = 4
             direction = ''
+            multiplyfordirection = 1
+            couplingterm2 = 3
         elif direction in ['SS','Side-to-Side','sideside']:
             var1 = 1
             var2 = 3
             direction = 'SS'
+            multiplyfordirection = -1
+            couplingterm2 = 4
 
         m_turbine   = self.mtower + self.mRNA                                       # turbine total mass
         zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine # turbine center of gravity
         zBase = self.memberList[-1].rA[2]                                           # tower base elevation [m]
         hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
-        aCG_turbine = -self.w**2 *( Xi[var1,:] + zCG_turbine*Xi[var2,:] )                 # fore-aft acceleration of turbine CG
+        aCG_turbine = -self.w**2 *(multiplyfordirection*Xi[var1,:] + zCG_turbine*Xi[var2,:] )                 # fore-aft acceleration of turbine CG
         # turbine pitch moment of inertia about CG [kg-m^2]
         ICG_turbine = (translateMatrix6to6DOF(self.memberList[-1].M_struc, [0,0,-zCG_turbine])[var2,var2]     # tower MOI about turbine CG
                        + self.mRNA*(self.hHub-zCG_turbine)**2 + self.IrRNA   )                          # RNA MOI with parallel axis theorem
         # moment components and summation (all complex amplitudes)
-        M_I      = -m_turbine*aCG_turbine*hArm - ICG_turbine*(-self.w**2 *Xi[var2,:] ) # tower base inertial reaction moment
+        M_I1     = -m_turbine*aCG_turbine*hArm
+        M_I2     =    - ICG_turbine*(-self.w**2 *Xi[var2,:] ) # tower base inertial reaction moment
         M_w      = m_turbine*self.g * hArm*Xi[var2]                                    # tower base weight moment
-        M_F_aero = self.F_aero[var1,:]*(self.hHub - zBase)                   # tower base moment from turbulent wind excitation
-        M_X_aero = -(-self.w**2 *self.A_aero[var1,var1,:]                                 # tower base aero reaction moment
-                     + 1j*self.w *self.B_aero[var1,var1,:] )*(self.hHub - zBase)**2 *Xi[var2,:]
-        dynamic_moment = M_I + M_w + M_F_aero + M_X_aero                            # total tower base fore-aft bending moment [N-m]
-        plt.figure()
-        plt.plot(M_I)
-        plt.plot(M_w)
-        plt.plot(M_F_aero)
-        plt.plot(M_X_aero)
-        plt.legend(['M_I', 'M_w', 'Mf_aero', 'M_xaero'])
-        plt.title(f'Mbase {direction}')
+        M_F_aero = multiplyfordirection * self.F_aero[var1,:]*(self.hHub - zBase)                   # tower base moment from turbulent wind excitation
+        M_X_aero_A1 = (-self.w**2 *self.A_aero[var1,var1,:])*(self.hHub - zBase)**2 *Xi[var2,:]
+        M_X_aero_A2 = -(-self.w**2 *self.A_aero[1,0,:])*(self.hHub - zBase)**2 *Xi[couplingterm2,:]
+        M_X_aero_B1 = -(1j * self.w * self.B_aero[var1,var1,:]) * (self.hHub - zBase) ** 2 * Xi[var2, :]
+        M_X_aero_B2 = (1j * self.w * self.B_aero[1, 0, :]) * (self.hHub - zBase) ** 2 * Xi[couplingterm2, :]
+
+        M_X_aero = M_X_aero_A1 + M_X_aero_A2 + M_X_aero_B1 + M_X_aero_B2
+        # index = 90
+        # print(f'F_aero {direction} = {self.F_aero[var1,index]}')
+        # print(f'M_F_aero {direction}= {M_F_aero[index]}')
+        # print(f'M_X_aero A1  {direction}= {M_X_aero_A1[index]}')
+        # print(f'M_X_aero A2  {direction}= {M_X_aero_A2[index]}')
+        # print(f'M_X_aero B1  {direction}= {M_X_aero_B1[index]}')
+        # print(f'M_X_aero B2  {direction}= {M_X_aero_B2[index]}')
+        # print('--------------------------------------')
+        dynamic_moment = M_I1 + M_I2 + M_w + M_X_aero + M_F_aero                        # total tower base fore-aft bending moment [N-m]
         dynamic_moment_RMS = getRMS(dynamic_moment, self.dw)
         # fill in metrics
         results[f'Mbase{direction}_avg'][iCase] = m_turbine*self.g * hArm*np.sin(Xi0[var2]) + transformForce(self.F_aero0, offset=[0,0,-hArm])[var2] # mean moment from weight and thrust
