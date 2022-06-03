@@ -465,7 +465,7 @@ class FOWT():
             wind_heading = np.deg2rad(case['wind_heading'])
             rotateToFloaterOrientation = rotationMatrix(0, 0, wind_heading) #positive, because rotating to hub orientation wrt floater reference frame
 
-            print(rotateToFloaterOrientation)
+            # print(rotateToFloaterOrientation)
 
             # F_aero0 = np.matmul(rotationMatrix(0, 0, wind_heading), F_aero0)
             # f_aero = np.matmul(rotationMatrix(0, 0, wind_heading), f_aero)
@@ -490,7 +490,7 @@ class FOWT():
         '''This computes the linear strip-theory-hydrodynamics terms, including wave excitation for a specific case.'''
 
         # set up sea state
-        print(case)
+        # print(case)
         rho = self.rho_water
         g = self.g
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)
@@ -511,12 +511,17 @@ class FOWT():
             nHeadingsEval = 1
         for ii in range(nHeadingsEval):
             if case['add_waveheading'] == True:
+                gamma_ws1 = getFromDict(case,'gamma_ws1', default=3.3)
+                gamma_ws2 = getFromDict(case,'gamma_ws2', default=1)
+
+                gamma_cases = [gamma_ws1, gamma_ws2]
+                # print(gamma_cases[ii])
                 self.beta = case['wave_heading'][ii]
                 if case['wave_spectrum'][ii] == 'unit':
                     self.zeta = np.tile(1, self.nw)
                     S = np.tile(1, self.nw)
                 elif case['wave_spectrum'][ii] == 'JONSWAP':
-                    S = JONSWAP(self.w, case['wave_height'][ii], case['wave_period'][ii])
+                    S = JONSWAP(self.w, case['wave_height'][ii], case['wave_period'][ii], Gamma = gamma_cases[ii])
                     self.zeta = np.sqrt(S)  # wave elevation amplitudes (these are easiest to use)
                 elif case['wave_spectrum'][ii] in ['none', 'still']:
                     self.zeta = np.zeros(self.nw)
@@ -527,13 +532,13 @@ class FOWT():
 
             else:
                 self.beta = case['wave_heading']
-
+                gamma_ws1 = getFromDict(case, 'gamma_ws1', default=3.3)
                 # make wave spectrum
                 if case['wave_spectrum'] == 'unit':
                     self.zeta = np.tile(1, self.nw)
                     S         = np.tile(1, self.nw)
                 elif case['wave_spectrum'] == 'JONSWAP':
-                    S = JONSWAP(self.w, case['wave_height'], case['wave_period'])
+                    S = JONSWAP(self.w, case['wave_height'], case['wave_period'], Gamma = gamma_ws1)
                     self.zeta = np.sqrt(S)    # wave elevation amplitudes (these are easiest to use)
                 elif case['wave_spectrum'] in ['none','still']:
                     self.zeta = np.zeros(self.nw)
@@ -826,6 +831,8 @@ class FOWT():
         # print(f'M_X_aero B2  {direction}= {M_X_aero_B2[index]}')
         # print('--------------------------------------')
         dynamic_moment = M_I1 + M_I2 + M_w + M_X_aero + M_F_aero                        # total tower base fore-aft bending moment [N-m]
+
+
         dynamic_moment_RMS = getRMS(dynamic_moment, self.dw)
         # fill in metrics
         results[f'Mbase{direction}_avg'][iCase] = m_turbine*self.g * hArm*np.sin(Xi0[var2]) + transformForce(self.F_aero0, offset=[0,0,-hArm])[var2] # mean moment from weight and thrust
@@ -858,19 +865,19 @@ class FOWT():
         results['roll_std'][iCase] = getRMS(roll_deg, self.dw)
         results['roll_max'][iCase] = rad2deg(Xi0[3]) + 3*results['roll_std'][iCase]
         results['roll_PSD'][iCase,:] = getPSD(roll_deg)
-        
+
         pitch_deg = rad2deg(Xi[4,:])
         results['pitch_avg'][iCase] = rad2deg(Xi0[4])
         results['pitch_std'][iCase] = getRMS(pitch_deg, self.dw)
         results['pitch_max'][iCase] = rad2deg(Xi0[4]) + 3*results['pitch_std'][iCase]
         results['pitch_PSD'][iCase,:] = getPSD(pitch_deg)
-        
+
         yaw_deg = rad2deg(Xi[5,:])
         results['yaw_avg'][iCase] = rad2deg(Xi0[5])
         results['yaw_std'][iCase] = getRMS(yaw_deg, self.dw)
         results['yaw_max'][iCase] = rad2deg(Xi0[5]) + 3*results['yaw_std'][iCase]
         results['yaw_PSD'][iCase,:] = getPSD(yaw_deg)
-        
+
         XiHub = Xi[0,:] + self.hHub*Xi[4,:]  # hub fore-aft displacement amplitude (used as an approximation in a number of outputs)
         
         # nacelle acceleration
@@ -880,7 +887,7 @@ class FOWT():
         # tower base bending moment
         self.calcTBBendingMom(Xi, Xi0, results,iCase,'FA')
         self.calcTBBendingMom(Xi, Xi0, results,iCase,'SS')
-        
+
         
         # wave PSD for reference
         results['wave_PSD1'][iCase,:] = getPSD(self.storeZeta[0,:])        # wave elevation spectrum

@@ -10,6 +10,28 @@ settings:                   # global Settings
     nIter        :   12      # sets how many iterations to perform in Model.solveDynamics()
     numThreads   :  16       # number of threads used in pyHams
     numAngles    :  50      # number of angles around the tower to be evaluated
+
+parametricAnalysis:
+    parametricChange      : True              # [bool] Evaluate
+    changeType            : wavePeriod2   # [string] set type of parametric change i.e: misalignment, floaterRotation, windSpeed, turbulanceModel, waveHeight1, waveHeight2, wavePeriod1, wavePeriod2
+    misalignmentAngle     : 10                # [deg] Misalignment angle to evaluate
+    numMisalign           : 12                # [int] Number of misalignment angles from base case to evaluate
+
+    rotationAngle         : 10                 # [deg] rotation with which to rotate the loads wrt floater orientation
+    numRotations          : 12               # [int] Number of rotations
+
+    waveHeightIncrement1  : 0.2                # [m] Increment in significant wave height, component 1
+    numWHIncrements1      : 30                 # [int] Number of increments in wave height, component 1
+
+    waveHeightIncrement2  : 0.2                 # [m] Increment in significant wave height, component 2
+    numWHIncrements2      : 30                 # [int] Number of increments in wave height, component 2
+
+    wavePeriodIncrement1  : 0.2                 # [s] Increment in significant wave height, component 1
+    numWPIncrements1      : 60                 # [int] Number of increments in wave height, component 1
+
+    wavePeriodIncrement2  : 0.4                 # [s] Increment in significant wave height, component 2
+    numWPIncrements2      : 60                 # [int] Number of increments in wave height, component 2
+
 site:
     water_depth : 200        # [m]      uniform water depth
     rho_water   : 1025.0     # [kg/m^3] water density
@@ -19,21 +41,25 @@ site:
     
 cases:
 
-    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, add_waveheading, wave_spectrum2, wave_period2, wave_height2, wave_heading2]
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, add_waveheading, wave_spectrum2, wave_period2, wave_height2, wave_heading2, gamma_ws1, gamma_ws2]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)          bool        string            (s)           (m)           (deg)
         # Base case layout
 #        -  [    3,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            20,          3,             60 ]
 
+        # Test case to test misalignment and rotation
+        - [ 8.5,        0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         4,           0,               True,           JONSWAP,            5,          2,             90]
+
+
         # Develop set for pyhams runs (this will speed up following test runs if ph.run_hams is disabled)
-##        -  [    11,         -360,     0,     operating,          0,        JONSWAP,         12,         6,          -360,               True,           JONSWAP,            25,          3,             -355 ]
+#        -  [    11,         -360,     0,     operating,          0,        JONSWAP,         12,         6,          -360,               True,           JONSWAP,            25,          3,             -355 ]
 #        -  [    11,         360,     0,     operating,          0,        JONSWAP,         12,         6,           360,               True,           JONSWAP,            25,          3,             355 ]
 #        -  [    11,         0,     0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            25,          3,             0 ]
 
 
         # Test cases full symmetry floater (-120, 0, 120 deg)
-        -  [    8.5,         0,     IIB_NTM,     operating,          0,        none,         12,         6,           0,               False,           JONSWAP,            25,          3,             0 ]
-        -  [    8.5,         120,     IIB_NTM,     operating,          0,        none,         12,         6,           120,               False,           JONSWAP,            25,          3,             120 ]
-        -  [    8.5,        240,     IIB_NTM,     operating,          0,        none,         12,         6,           240,               False,           JONSWAP,            25,          3,             240 ]
+#        -  [    8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            25,          3,             0 ]
+#        -  [    8.5,         120,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           120,               True,           JONSWAP,            25,          3,             120 ]
+#        -  [    8.5,        240,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           240,               True,           JONSWAP,            25,          3,             240 ]
 
         # Test cases full symmetry floater (300, 60, 180 deg)
 
@@ -99,14 +125,17 @@ cases:
 #        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            25,          3,             90 ]
 
 
-   # Test cases full symmetry floater (-60, 60, 180 deg)
-#        -  [    11,         -60,     IIB_NTM,     operating,          0,        none,         12,         6,          -60,               False,           JONSWAP,            25,          3,             -60 ]
-#        -  [    11,         60,     IIB_NTM,     operating,          0,        none,         12,         6,           60,               False,           JONSWAP,            25,          3,             60 ]
-#        -  [ 11,         180,     IIB_NTM,     operating,          0,        none,         12,         6,           180,               False,           JONSWAP,            25,          3,             180 ]
+      # Test cases to investigate the contribution of aerodynamic damping:
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               False,           JONSWAP,            12,          6,             0 , 3.3, 1]
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           90,               True,           JONSWAP,            25,          8,             90]
 
-#        - [ 0,         0,     0,     operating,          0,        JONSWAP,         12,         6,           30,               False,           none,            25,          3,             30 ]
-#        - [ 0,         0,     0,     operating,          0,        JONSWAP,         12,         6,           330,               False,           none,            25,          3,             330 ]
 
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               True,           JONSWAP,            25,          5,             0]
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               True,           JONSWAP,            25,          5,             60 ]
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               True,           JONSWAP,            25,          5,             90 ]
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               True,           JONSWAP,            25,          6,             0]
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               True,           JONSWAP,            25,          6,             60 ]
+#        - [ 8.5,         0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         6,           10,               True,           JONSWAP,            25,          6,             90 ]
 
 
 turbine:

@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
 from fatiguepy import *
+from joblib import Parallel, delayed
+from copy import copy, deepcopy
 
 import moorpy as mp
 import raft.raft_fowt  as fowt
@@ -34,7 +36,12 @@ class Model():
 
         self.nDOF = 0  # number of DOFs in system
 
-        self.design = design # save design dictionary for possible later use/reference
+        if 'parametricAnalysis' not in design:
+            self.design = design # save design dictionary for possible later use/reference
+        else:
+            self.changeType = getFromDict(design['parametricAnalysis'], 'changeType', dtype=str)
+            print(self.changeType)
+            self.design = parametricAnalysis(design, self.changeType)
 
 
         # parse settings
@@ -48,7 +55,6 @@ class Model():
         
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
-
         self.numAngles = int(getFromDict(design['settings'],'numAngles', default=73)) #to cover 0 to 360 in steps of 5 for calculation of stress around tb
         self.anglesArray = np.linspace(0,2*np.pi,self.numAngles)
 
@@ -128,7 +134,7 @@ class Model():
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
 
         # TODO: add printing of summary info here - mass, stiffnesses, etc
-        
+
     
     def analyzeCases(self, display=0):
         '''This runs through all the specified load cases, building a dictionary of results.'''
@@ -240,7 +246,6 @@ class Model():
             
         # loop through each case
         for iCase in range(nCases):
-        
             print(f"\n--------------------- Running Case {iCase+1} ----------------------")
             print(self.design['cases']['data'][iCase])
         
@@ -252,7 +257,7 @@ class Model():
                 fowt.Xi0 = np.zeros(6)      # zero platform offsets
                 fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
                 fowt.calcHydroConstants(case)
-            
+
             # calculate platform offsets and mooring system equilibrium state
             self.calcMooringAndOffsets()
             
@@ -267,8 +272,9 @@ class Model():
             
             # solve system dynamics
             self.solveDynamics(case)
-            
-            # process outputs that are specific to the floating unit       
+
+
+            # process outputs that are specific to the floating unit
             self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])            
  
             # process mooring tension outputs
@@ -360,7 +366,6 @@ class Model():
 
         r6eq = self.ms.bodyList[0].r6
         fowt.Xi0 = np.array(r6eq)   # save current mean offsets for the FOWT
-
         #self.ms.plot()
 
         print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
@@ -408,8 +413,8 @@ class Model():
         C_tot[5,5] += fowt.yawstiff     # will need to be put in calcSystemProps() once there is more than 1 fowt in a model
 
         # add fowt's terms to system matrices (BEM arrays are not yet included here)
-        M_tot += fowt.M_struc + fowt.A_hydro_morison   # mass
-        C_tot += fowt.C_struc + fowt.C_hydro           # stiffness
+        M_tot += fowt.M_struc + fowt.A_hydro_morison  # mass
+        C_tot += fowt.C_struc + fowt.C_hydro          # stiffness
 
         # check viability of matrices
         message=''
@@ -613,7 +618,13 @@ class Model():
     
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
-        
+
+        # TODO: Add store/plotting of coupling terms A, B, C matrices wrt to roll-roll. pitch-pitch terms.
+        self.M_tot = M_tot
+        self.B_tot = B_tot
+        self.C_tot = C_tot
+        self.F_tot = F_tot
+
         if conv_plot:
             # labels for convergence plots
             ax[1].legend()
@@ -827,16 +838,18 @@ class Model():
         # ax[''].legend()
         fig.suptitle('RAFT power spectral densities')
 
-    def plotTowerBaseResponse(self, plot = 'default', include_surface = False):
+    def plotTowerBaseResponse(self, plot = 'default', plot_eq_stress_angles=False, include_surface = False):
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
 
 
         for iCase in range(nCases):
+
+
             sigmaX, ANGLESMesh, FREQMesh = getSigmaXPSD(TBFA=metrics['Mbase_sig'][iCase,:], TBSS=metrics['MbaseSS_sig'][iCase,:], frequencies=self.w, angles=self.anglesArray)
 
             DK_ps = np.zeros([self.numAngles,40])
-            if include_surface == True:
+            if include_surface:
                 plt.figure()
                 ax = plt.axes(projection='3d')
                 ax.plot_surface(np.rad2deg(ANGLESMesh), FREQMesh / TwoPi, TwoPi * sigmaX,
@@ -857,20 +870,67 @@ class Model():
                 DK_ps[iAngles, :] = DK_temp.counting_cycles()
                 metrics['DEL_angles'][iCase, iAngles] = (np.dot(DK_temp.counting_cycles(),stress_range**6)/np.sum(DK_temp.counting_cycles()))**(1/6)
 
-        plt.figure()
+
         if plot == 'polar':
-            plt.axes(projection = 'polar')
-            plt.thetagrids()
+            plt.figure()
+            ax = plt.subplot(111, polar = True)
+            ax.grid(True)
+            ax.set_theta_direction(-1)
+            ax.set_theta_offset(np.pi/2.0)
             for iCase in range(nCases):
-                plt.plot(self.anglesArray, metrics['DEL_angles'][iCase,:],  label=f'Case {iCase+1}')
+                case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+                wind_heading = float(case['wind_heading'])
+                wave_1 = float(case['wave_heading'])
+                if case['add_waveheading']:
+                    wave_2 = float(case['wave_heading2'])
+                    wave2string = f', wave 2 = {wave_2} deg'
+                else: wave2string = ''
+                ax.plot(self.anglesArray, metrics['DEL_angles'][iCase, :], label=f'Case {iCase + 1}, wind heading = {wind_heading} deg, wave 1 = {wave_1} deg{wave2string}')
+            ax.set_title('Fatigue Damage Equivalant Load Around TB [MPa]')
+            ax.set_xlabel('Location around TB circumference (deg)')
+            # ax.legend()
         else:
+            plt.figure()
             plt.ylabel('Sigma_x (MPa)')
             plt.xlim([0,360])
             for iCase in range(nCases):
                 plt.plot(np.rad2deg(self.anglesArray), metrics['DEL_angles'][iCase,:],  label=f'Case {iCase+1}, ')
-        plt.legend()
-        plt.xlabel('Location around TB circumference (deg)')
-        plt.title('Fatigue Damage Equivalant Load Around TB [MPa]')
+            plt.legend()
+            plt.xlabel('Location around TB circumference (deg)')
+            plt.title('Fatigue Damage Equivalant Load Around TB [MPa]')
+
+        if plot_eq_stress_angles:
+            fig,ax = plt.subplots()
+            variableXaxis = []
+            for iCase in range(nCases):
+                cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+                if self.changeType == 'misalignment':
+                    variableXaxis.append(cases['wave_heading2'])
+                    unit = '[deg]'
+                elif self.changeType == 'floaterRotation':
+                    rotationAngle = getFromDict(self.design['parametricAnalysis'], 'rotationAngle')
+                    variableXaxis.append(iCase*rotationAngle) #not robust, now only works for single base case being rotated
+                    unit = '[deg]'
+                elif self.changeType == 'waveHeight1':
+                    variableXaxis.append(cases['wave_height'])
+                    unit = '[m]'
+                elif self.changeType == 'waveHeight2':
+                    variableXaxis.append(cases['wave_height2'])
+                    unit = '[m]'
+                elif self.changeType == 'wavePeriod1':
+                    variableXaxis.append(cases['wave_period'])
+                    unit = '[s]'
+                elif self.changeType == 'wavePeriod2':
+                    variableXaxis.append(cases['wave_period2'])
+                    unit = '[s]'
+            ax.plot(variableXaxis, np.amax(metrics['DEL_angles'][:,:],1),label='Max eq stress')
+            ax.plot(variableXaxis, np.amin(metrics['DEL_angles'][:, :], 1),label='Min eq stress')
+            ax.set_xlabel(f'{self.changeType} {unit}')
+            ax.set_ylabel('Stress (FDEL) MPa')
+            ax.set_title(f'Equivalent stress for changing {self.changeType}')
+            ax.legend()
+            ax.grid()
+
 
         # TODO: Seperate calculation of FDEL and Plotting in seperate methods, they can then be added to  results print.
 
@@ -890,6 +950,169 @@ class Model():
                       # stressMesh[1,1]-stressMesh[0,0],
                       # DK_ps.flatten())
 
+    def RMSmisalignresponse(self):
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+        rotation_RMS = []
+        yawRMS = []
+        rollyaw= []
+        pitchyaw = []
+        variableXaxis = []
+        # print(dict(zip(self.design['cases']['keys'], self.design['cases']['data'])))
+        for iCase in range(nCases):
+            cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+            if self.changeType == 'misalignment':
+                variableXaxis.append(cases['wave_heading2'])
+                unit = '[deg]'
+            elif self.changeType == 'floaterRotation':
+                rotationAngle = getFromDict(self.design['parametricAnalysis'], 'rotationAngle')
+                variableXaxis.append(iCase * rotationAngle)  # not robust, now only works for single base case being rotated
+                unit = '[deg]'
+            elif self.changeType == 'waveHeight1':
+                variableXaxis.append(cases['wave_height'])
+                unit = '[m]'
+            elif self.changeType == 'waveHeight2':
+                variableXaxis.append(cases['wave_height2'])
+                unit = '[m]'
+            elif self.changeType == 'wavePeriod1':
+                variableXaxis.append(cases['wave_period'])
+                unit = '[s]'
+            elif self.changeType == 'wavePeriod2':
+                variableXaxis.append(cases['wave_period2'])
+                unit = '[s]'
+            root_value_yaw_roll = (metrics['roll_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
+            root_value_yaw_pitch = (metrics['pitch_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
+            root_value_all = (metrics['roll_std'][iCase]**2+metrics['pitch_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
+            yawRMS.append(metrics['yaw_std'][iCase])
+            rollyaw.append(root_value_yaw_roll)
+            pitchyaw.append(root_value_yaw_pitch)
+            rotation_RMS.append(root_value_all)
+
+        fig, ax = plt.subplots()
+        ax.plot(variableXaxis,yawRMS, label = 'RMS values of yaw-response')
+        ax.plot(variableXaxis,rotation_RMS, label='Root value of rotation RMS')
+        ax.plot(variableXaxis,rollyaw, label='Root value of roll and yaw RMS')
+        ax.plot(variableXaxis,pitchyaw, label='Root value of pitch and yaw RMS')
+        ax.set_xlabel(f'{self.changeType} {unit}')
+        ax.set_ylabel('Root of RMS values [-]')
+        ax.set_title('RMS values for rotational DOFs')
+        ax.legend()
+        ax.grid()
+    # self.design['cases']['data'][iCase]
+
+    def plotCouplingTerms(self):
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        DOF1 = [4,6]
+        DOF2 = [4,6]
+
+        for iCase in range(nCases):
+            fig, ax = plt.subplots(3, 3, sharex=True)
+            for dof in range(DOF1[0]-1,DOF1[1]):
+                for dof2 in range (DOF2[0]-1,DOF2[1]):
+
+
+                    if dof2 == 5:
+                        ax[0, dof - 3].plot(self.w, self.M_tot[dof, dof2, :], '--', label=f'(M+A)({dof + 1},{dof2 + 1})')
+                        ax[1, dof - 3].plot(self.w, self.M_tot[dof, dof2, :], '--', label=f'B({dof + 1},{dof2 + 1})')
+                        ax[2,dof-3].plot(self.w, self.M_tot[dof, dof2, :], '--', label=f'C({dof + 1},{dof2 + 1})')
+                    else:
+                        ax[0, dof-3].plot(self.w, self.M_tot[dof, dof2, :], label=f'(M+A)({dof + 1},{dof2 + 1})')
+                        ax[1, dof-3].plot(self.w, self.B_tot[dof, dof2, :], label=f'B({dof + 1},{dof2 + 1})')
+                        ax[2, dof-3].plot(self.w, self.C_tot[dof, dof2, :], label=f'C({dof + 1},{dof2 + 1})')
+                    ax[0, dof - 3].legend()
+                    ax[1, dof - 3].legend()
+                    ax[2, dof - 3].legend()
+
+            ax[0,0].set_title('Roll')
+            ax[0, 1].set_title('Pitch')
+            ax[0, 2].set_title('Yaw')
+            ax[2,0].set_xlabel('Frequency [Hz]')
+            ax[2, 1].set_xlabel('Frequency [Hz]')
+            ax[2, 2].set_xlabel('Frequency [Hz]')
+            ax[0,0].set_ylabel('(M+A) terms [kg m^2]')
+            ax[1,0].set_ylabel('B terms [kg m/s]')
+            ax[2,0].set_ylabel('C terms [kg m/s^2]')
+            fig.suptitle('Roll, Pitch, Yaw diagonal and coupling terms.')
+
+    def plotBEMTerms(self):
+        fowt = self.fowtList[0]
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        DOF1 = [4,6]
+        DOF2 = [4,6]
+
+        for iCase in range(nCases):
+            fig, ax = plt.subplots(2, 3, sharex=True)
+            for dof in range(DOF1[0]-1,DOF1[1]):
+                for dof2 in range (DOF2[0]-1,DOF2[1]):
+                    if dof2 == 5:
+                        ax[0, dof - 3].plot(self.w, fowt.A_BEM[dof, dof2, :], '--', label=f'A({dof + 1},{dof2 + 1})')
+                        ax[1, dof - 3].plot(self.w, fowt.B_BEM[dof, dof2, :], '--', label=f'B({dof + 1},{dof2 + 1})')
+                    else:
+                        ax[0, dof-3].plot(self.w, fowt.A_BEM[dof, dof2, :], label=f'A({dof + 1},{dof2 + 1})')
+                        ax[1, dof-3].plot(self.w, fowt.B_BEM[dof, dof2, :], label=f'B({dof + 1},{dof2 + 1})')
+                    ax[0, dof - 3].legend()
+                    ax[1, dof - 3].legend()
+
+            ax[0,0].set_title('Roll')
+            ax[0, 1].set_title('Pitch')
+            ax[0, 2].set_title('Yaw')
+            ax[1,0].set_xlabel('Frequency [Hz]')
+            ax[1, 1].set_xlabel('Frequency [Hz]')
+            ax[1, 2].set_xlabel('Frequency [Hz]')
+            ax[0,0].set_ylabel('A_BEM terms [kg m^2]')
+            ax[1,0].set_ylabel('B_BEM terms [kg m/s]')
+            fig.suptitle('Roll, Pitch, Yaw BEM diagonal and coupling terms.')
+
+    def plotCouplingContribution(self):
+
+        M_A_contr = np.zeros_like(self.M_tot)
+        B_contr = np.zeros_like(self.B_tot)
+        C_contr = np.zeros_like(self.C_tot)
+
+
+
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        DOF1 = [4,6]
+        DOF2 = [4,6]
+
+        for iCase in range(nCases):
+            fig, ax = plt.subplots(3, 3, sharex=True)
+            for dof in range(DOF1[0]-1,DOF1[1]):
+                for dof2 in range (DOF2[0]-1,DOF2[1]):
+
+                    M_A_contr[dof, dof2, :] = np.multiply(-self.w[:] ** 2, np.multiply(self.M_tot[dof, dof2,:] ,self.Xi[dof2, :]))
+                    B_contr[dof, dof2, :] = np.multiply(1j * self.w[:], np.multiply(self.B_tot[dof, dof2, :], self.Xi[dof2, :]))
+                    C_contr[dof, dof2, :] = np.multiply(self.C_tot[dof, dof2, :], self.Xi[dof2, :])
+
+
+                    if dof2 == 5:
+                        ax[0, dof - 3].plot(self.w, M_A_contr[dof, dof2, :],'--', label=f'-w^2*(M+A)({dof + 1},{dof2 + 1})*Xi_{dof2 + 1}')
+                        ax[1, dof - 3].plot(self.w, B_contr[dof, dof2, :],'--', label=f'jw*B({dof + 1},{dof2 + 1})*Xi_{dof2 + 1}')
+                        ax[2,dof-3].plot(self.w, C_contr[dof, dof2, :],'--', label=f'C({dof + 1},{dof2 + 1})*Xi_{dof2+1}')
+                    else:
+                        ax[0, dof - 3].plot(self.w, M_A_contr[dof, dof2, :],label=f'(M+A)({dof + 1},{dof2 + 1})*Xi_{dof2 + 1}')
+                        ax[1, dof - 3].plot(self.w, B_contr[dof, dof2, :], label=f'B({dof + 1},{dof2 + 1})*Xi_{dof2 + 1}')
+                        ax[2, dof - 3].plot(self.w, C_contr[dof, dof2, :], label=f'C({dof + 1},{dof2 + 1})*Xi_{dof2 + 1}')
+                    ax[0, dof - 3].legend()
+                    ax[1, dof - 3].legend()
+                    ax[2, dof - 3].legend()
+
+            ax[0,0].set_title('Roll')
+            ax[0, 1].set_title('Pitch')
+            ax[0, 2].set_title('Yaw')
+            ax[2,0].set_xlabel('Frequency [Hz]')
+            ax[2, 1].set_xlabel('Frequency [Hz]')
+            ax[2, 2].set_xlabel('Frequency [Hz]')
+            ax[0,0].set_ylabel('(M+A)*Xi terms [kg m^2]')
+            ax[1,0].set_ylabel('B*Xi terms [kg m/s]')
+            ax[2,0].set_ylabel('C*Xi terms [kg m/s^2]')
+            fig.suptitle('Roll, Pitch, Yaw response contributions of diagonal and coupling terms.')
 
     def preprocess_HAMS(self, dw=0, wMax=0, dz=0, da=0):
         '''This generates a mesh for the platform, runs a BEM analysis on it

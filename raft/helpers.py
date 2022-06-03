@@ -599,7 +599,7 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
             if (    wt_init["airfoils"][i]["polars"][0]["c_l"]["grid"][j] == wt_init["airfoils"][i]["polars"][0]["c_d"]["grid"][j]
                 and wt_init["airfoils"][i]["polars"][0]["c_l"]["grid"][j]== wt_init["airfoils"][i]["polars"][0]["c_m"]["grid"][j] ):
                 
-                afdict['data'].append( [ rad2deg(wt_init["airfoils"][i]["polars"][0]["c_l"]["grid"][j]),
+                afdict['data'].append( [ np.rad2deg(wt_init["airfoils"][i]["polars"][0]["c_l"]["grid"][j]),
                                                  wt_init["airfoils"][i]["polars"][0]["c_l"]["values"][j],
                                                  wt_init["airfoils"][i]["polars"][0]["c_d"]["values"][j],
                                                  wt_init["airfoils"][i]["polars"][0]["c_m"]["values"][j] ] )
@@ -696,7 +696,7 @@ def getUniqueCaseHeadings(keys, values):
         numberOfHeadings = 1
     return caseHeadings, headingStep, numberOfHeadings # only have unique values in evaluated list, otherwise possibly issues with np.diff
 
-def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50, endpoint=False), d = 10,thickness= 0.083):
+def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 10, thickness= 0.083):
     """Function to retrieve Axial stress (sigma_x) around tower base circumference using tower base bending"""
     # angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
     angleMeshFA, TBFAMesh = np.meshgrid(angles, TBFA)
@@ -705,11 +705,70 @@ def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50, endpo
     # print('TBFSS', TBSS)
     Izz = np.pi/8*thickness*d**3 # Bending moment of inertia, assume thin walled
 
-    sigmaX = ((TBFAMesh*np.cos(angleMeshFA)+TBSSMesh*np.sin(angleMeshSS))*d/2)/Izz # Return?
-    print(sigmaX)
+    sigmaX = ((TBFAMesh*np.cos(angleMeshFA)-TBSSMesh*np.sin(angleMeshSS))*d/2)/Izz # Return?
+    # print(sigmaX)
     # sigmaX = psdTBFAMesh*(np.cos(angleMeshFA)*d/2/Izz)**2+psdTBSSMesh*(np.sin(angleMeshSS)*d/2/Izz)**2
     ANGLESMesh, FREQMesh = np.meshgrid(angles, frequencies)
     return getPSD(sigmaX/10**6), ANGLESMesh, FREQMesh
+
+def parametricAnalysis(design, changeType):
+
+    if getFromDict(design['parametricAnalysis'], 'parametricChange', default=False):
+        misalignmentAngle = getFromDict(design['parametricAnalysis'], 'misalignmentAngle')
+        numMisalignAngles = getFromDict(design['parametricAnalysis'], 'numMisalign', dtype=int)
+        if misalignmentAngle is not None and numMisalignAngles is not None and changeType == 'misalignment':
+            for misalign in range(numMisalignAngles):
+                add_design = design['cases']['data'][0].copy()
+                add_design[13] += misalignmentAngle * (misalign + 1)
+                design['cases']['data'].append(add_design)
+
+        rotationAngle = getFromDict(design['parametricAnalysis'], 'rotationAngle')
+        numRotations = getFromDict(design['parametricAnalysis'], 'numRotations', dtype=int)
+        if rotationAngle is not None and numRotations is not None and changeType == 'floaterRotation':
+            for misalign in range(numRotations):
+                add_design = design['cases']['data'][0].copy()
+                add_design[1] += rotationAngle * (misalign + 1)
+                add_design[8] += rotationAngle * (misalign + 1)
+                add_design[13] += rotationAngle * (misalign + 1)
+                design['cases']['data'].append(add_design)
+
+        waveHeightIncrement1 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement1')
+        numWHincrements1 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int)
+        if waveHeightIncrement1 is not None and numWHincrements1 is not None and changeType == 'waveHeight1':
+            for numIncr in range(numWHincrements1):
+                add_design = design['cases']['data'][0].copy()
+                add_design[7] += waveHeightIncrement1 * (numIncr + 1)
+                design['cases']['data'].append(add_design)
+
+        waveHeightIncrement2 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement2')
+        numWHincrements2 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int)
+        if waveHeightIncrement2 is not None and numWHincrements2 is not None and changeType == 'waveHeight2':
+            for numIncr in range(numWHincrements2):
+                add_design = design['cases']['data'][0].copy()
+                add_design[12] += waveHeightIncrement2 * (numIncr + 1)
+                design['cases']['data'].append(add_design)
+
+        wavePeriodIncrement1 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement1')
+        numWPincrements1 = getFromDict(design['parametricAnalysis'], 'numWPIncrements1', dtype=int)
+        if wavePeriodIncrement1 is not None and numWPincrements1 is not None and changeType == 'wavePeriod1':
+            for numIncr in range(numWPincrements1):
+                add_design = design['cases']['data'][0].copy()
+                add_design[6] += wavePeriodIncrement1 * (numIncr + 1)
+                design['cases']['data'].append(add_design)
+
+        wavePeriodIncrement2 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement2')
+        numWPincrements2 = getFromDict(design['parametricAnalysis'], 'numWPIncrements2', dtype=int)
+        if wavePeriodIncrement2 is not None and numWPincrements2 is not None and changeType == 'wavePeriod2':
+            for numIncr in range(numWPincrements2):
+                add_design = design['cases']['data'][0].copy()
+                add_design[11] += wavePeriodIncrement2 * (numIncr + 1)
+                design['cases']['data'].append(add_design)
+
+        return design
+
+    else:
+        return design
+
 if __name__ == '__main__':
     
     
