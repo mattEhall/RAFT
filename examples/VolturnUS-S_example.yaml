@@ -13,24 +13,25 @@ settings:                   # global Settings
 
 parametricAnalysis:
     parametricChange      : True              # [bool] Evaluate
-    changeType            : wavePeriod2   # [string] set type of parametric change i.e: misalignment, floaterRotation, windSpeed, turbulanceModel, waveHeight1, waveHeight2, wavePeriod1, wavePeriod2
-    misalignmentAngle     : 10                # [deg] Misalignment angle to evaluate
-    numMisalign           : 12                # [int] Number of misalignment angles from base case to evaluate
+    changeType            : wavePeriod2   # [string] set type of parametric change i.e:
+    # misalignment, floaterRotation, windSpeed, turbulanceModel, waveHeight1, waveHeight2, wavePeriod1, wavePeriod2
+    misalignmentAngle     : 5                # [deg] Misalignment angle to evaluate
+    numMisalign           : 36                # [int] Number of misalignment angles from base case to evaluate
 
-    rotationAngle         : 10                 # [deg] rotation with which to rotate the loads wrt floater orientation
-    numRotations          : 12               # [int] Number of rotations
+    rotationAngle         : 5                 # [deg] rotation with which to rotate the loads wrt floater orientation
+    numRotations          : 24               # [int] Number of rotations
 
-    waveHeightIncrement1  : 0.2                # [m] Increment in significant wave height, component 1
-    numWHIncrements1      : 30                 # [int] Number of increments in wave height, component 1
+    waveHeightIncrement1  : 0.15                # [m] Increment in significant wave height, component 1
+    numWHIncrements1      : 40                 # [int] Number of increments in wave height, component 1
 
-    waveHeightIncrement2  : 0.2                 # [m] Increment in significant wave height, component 2
-    numWHIncrements2      : 30                 # [int] Number of increments in wave height, component 2
+    waveHeightIncrement2  : 0.15                 # [m] Increment in significant wave height, component 2
+    numWHIncrements2      : 40                 # [int] Number of increments in wave height, component 2
 
-    wavePeriodIncrement1  : 0.2                 # [s] Increment in significant wave height, component 1
-    numWPIncrements1      : 60                 # [int] Number of increments in wave height, component 1
+    wavePeriodIncrement1  : 0.5                 # [s] Increment in significant wave height, component 1
+    numWPIncrements1      : 40                 # [int] Number of increments in wave height, component 1
 
-    wavePeriodIncrement2  : 0.4                 # [s] Increment in significant wave height, component 2
-    numWPIncrements2      : 60                 # [int] Number of increments in wave height, component 2
+    wavePeriodIncrement2  : 0.5                 # [s] Increment in significant wave height, component 2
+    numWPIncrements2      : 40                # [int] Number of increments in wave height, component 2
 
 site:
     water_depth : 200        # [m]      uniform water depth
@@ -47,7 +48,7 @@ cases:
 #        -  [    3,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            20,          3,             60 ]
 
         # Test case to test misalignment and rotation
-        - [ 8.5,        0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         4,           0,               True,           JONSWAP,            5,          2,             90]
+        - [ 8.5,        0,     IIB_NTM,     operating,          0,        JONSWAP,         12,         3,           0,               True,           JONSWAP,            0.1,          2,             90]
 
 
         # Develop set for pyhams runs (this will speed up following test runs if ph.run_hams is disabled)

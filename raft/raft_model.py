@@ -43,7 +43,7 @@ class Model():
             print(self.changeType)
             self.design = parametricAnalysis(design, self.changeType)
 
-
+        # print(self.design['cases'])
         # parse settings
         if not 'settings' in design:    # if settings field not in input data
             design['settings'] = {}     # make an empty one to avoid errors
@@ -136,7 +136,7 @@ class Model():
         # TODO: add printing of summary info here - mass, stiffnesses, etc
 
     
-    def analyzeCases(self, display=0):
+    def analyzeCases(self, display=False, numberOfCores = 1):
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
@@ -245,10 +245,13 @@ class Model():
                 fowt.calcBEM(nHeadings = 1 ,minHeading=minHeading)
             
         # loop through each case
-        for iCase in range(nCases):
-            print(f"\n--------------------- Running Case {iCase+1} ----------------------")
-            print(self.design['cases']['data'][iCase])
-        
+
+        def evaluateCases(iCase):
+        # for iCase in range(nCases): # This is old code from running after each other
+        # TODO: JvS: Indented print statements below because parallel computating picks up next task in line and printing cost time. Consider moving to if statement if number of cores allowed == 1.
+
+        #     print(f"\n--------------------- Running Case {iCase+1} ----------------------")
+        #     print(self.design['cases']['data'][iCase])
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
 
@@ -273,10 +276,42 @@ class Model():
             # solve system dynamics
             self.solveDynamics(case)
 
+# ------------------------------------------------------------------------
+            Xi0_store = fowt.Xi0
+            Xi_store = self.Xi[0:6, :]
+            Mooring_C = self.J_moor
+            Mooring_T = self.T_moor
 
-            # process outputs that are specific to the floating unit
-            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])            
- 
+            return Xi0_store, Xi_store, Mooring_C, Mooring_T
+
+        res = Parallel(n_jobs=-2, verbose=10)(delayed(evaluateCases)(iCase) for iCase in range(nCases))
+
+        Xi0_store = [item[0] for item in res]
+        Xi_store = [item[1] for item in res]
+        Mooring_C = [item[2] for item in res]
+        Mooring_T = [item[3] for item in res]
+        # results_store = [item[4] for item in res]
+
+
+        for iCase in range(nCases):
+            # self.results['case_metrics'] = results_store[iCase]
+            # print(self.results['case_metrics'])
+            fowt.Xi0 = Xi0_store[iCase]
+            self.Xi = Xi_store[iCase]
+            self.T_moor = Mooring_T[iCase]
+            self.C_moor = Mooring_C[iCase]
+            # form dictionary of case parameters
+            case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+            for fowt in self.fowtList:
+                # print('RMS value pitch and roll', (fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
+                fowt.calcTurbineConstants(case, ptfm_pitch=(fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
+                # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+
+            # ------------------------------------------------------------------------
+        # process outputs that are specific to the floating unit
+            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase,fowt.Xi0, self.Xi[0:6,:])
+            # self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])
+
             # process mooring tension outputs
             nLine = int(len(self.T_moor)/2)
             T_moor_amps = np.zeros([2*nLine, self.nw], dtype=complex) 
@@ -291,7 +326,7 @@ class Model():
                 self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[iT,:]) # PSD in N^2/(rad/s)
                 #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
         
-            if display > 0:
+            if display:
         
                 metrics = self.results['case_metrics']
             
@@ -317,8 +352,7 @@ class Model():
                     print(f"line {i} tension (N) {metrics['Tmoor_avg'][iCase,j]:10.2e}  {metrics['Tmoor_std'][iCase,j]:10.2e}  {metrics['Tmoor_max'][iCase,j]:10.2e}")
                 print(f"-----------------------------------------------------------")
 
-        
-
+        # print('Jobs finished')
     """
     def calcSystemConstantProps(self):
         '''This gets the various static/constant calculations of each FOWT done. (Those that don't depend on load case.)'''
@@ -503,7 +537,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=1, F_BEM_plot =0):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, F_BEM_plot =0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -906,28 +940,33 @@ class Model():
                 cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
                 if self.changeType == 'misalignment':
                     variableXaxis.append(cases['wave_heading2'])
-                    unit = '[deg]'
+                    string_x_axis = 'Misalignment second wave system [deg]'
+                elif self.changeType == 'misalignment1':
+                    variableXaxis.append(cases['wave_heading1'])
+                    string_x_axis = 'Misalignment first wave system [deg]'
                 elif self.changeType == 'floaterRotation':
                     rotationAngle = getFromDict(self.design['parametricAnalysis'], 'rotationAngle')
-                    variableXaxis.append(iCase*rotationAngle) #not robust, now only works for single base case being rotated
-                    unit = '[deg]'
+                    variableXaxis.append(
+                        iCase * rotationAngle)  # not robust, now only works for single base case being rotated
+                    string_x_axis = 'Floater rotation [deg]'
                 elif self.changeType == 'waveHeight1':
                     variableXaxis.append(cases['wave_height'])
-                    unit = '[m]'
+                    string_x_axis = 'Wave Height system 1 [m]'
                 elif self.changeType == 'waveHeight2':
                     variableXaxis.append(cases['wave_height2'])
-                    unit = '[m]'
+                    string_x_axis = 'Wave Height system 2 [m]'
                 elif self.changeType == 'wavePeriod1':
                     variableXaxis.append(cases['wave_period'])
-                    unit = '[s]'
+                    string_x_axis = 'Wave Period system 1 [s]'
                 elif self.changeType == 'wavePeriod2':
                     variableXaxis.append(cases['wave_period2'])
-                    unit = '[s]'
+                    string_x_axis = 'Wave Period system 2 [s]'
             ax.plot(variableXaxis, np.amax(metrics['DEL_angles'][:,:],1),label='Max eq stress')
             ax.plot(variableXaxis, np.amin(metrics['DEL_angles'][:, :], 1),label='Min eq stress')
-            ax.set_xlabel(f'{self.changeType} {unit}')
+            ax.set_xlabel(string_x_axis)
             ax.set_ylabel('Stress (FDEL) MPa')
-            ax.set_title(f'Equivalent stress for changing {self.changeType}')
+            ax.set_ylim(bottom=0)
+            ax.set_title(f'Equivalent stress for changing {string_x_axis}')
             ax.legend()
             ax.grid()
 
@@ -955,6 +994,8 @@ class Model():
         nCases = len(metrics['surge_avg'])
         rotation_RMS = []
         yawRMS = []
+        rollRMS = []
+        pitchRMS = []
         rollyaw= []
         pitchyaw = []
         variableXaxis = []
@@ -963,37 +1004,45 @@ class Model():
             cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
             if self.changeType == 'misalignment':
                 variableXaxis.append(cases['wave_heading2'])
-                unit = '[deg]'
+                string_x_axis = 'Misalignment second wave system [deg]'
+            elif self.changeType == 'misalignment1':
+                variableXaxis.append(cases['wave_heading1'])
+                string_x_axis = 'Misalignment first wave system [deg]'
             elif self.changeType == 'floaterRotation':
                 rotationAngle = getFromDict(self.design['parametricAnalysis'], 'rotationAngle')
                 variableXaxis.append(iCase * rotationAngle)  # not robust, now only works for single base case being rotated
-                unit = '[deg]'
+                string_x_axis = 'Floater rotation [deg]'
             elif self.changeType == 'waveHeight1':
                 variableXaxis.append(cases['wave_height'])
-                unit = '[m]'
+                string_x_axis = 'Wave Height system 1 [m]'
             elif self.changeType == 'waveHeight2':
                 variableXaxis.append(cases['wave_height2'])
-                unit = '[m]'
+                string_x_axis = 'Wave Height system 2 [m]'
             elif self.changeType == 'wavePeriod1':
                 variableXaxis.append(cases['wave_period'])
-                unit = '[s]'
+                string_x_axis = 'Wave Period system 1 [s]'
             elif self.changeType == 'wavePeriod2':
                 variableXaxis.append(cases['wave_period2'])
-                unit = '[s]'
+                string_x_axis = 'Wave Period system 2 [s]'
             root_value_yaw_roll = (metrics['roll_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
             root_value_yaw_pitch = (metrics['pitch_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
             root_value_all = (metrics['roll_std'][iCase]**2+metrics['pitch_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
+            rollRMS.append(metrics['roll_std'][iCase])
+            pitchRMS.append(metrics['pitch_std'][iCase])
             yawRMS.append(metrics['yaw_std'][iCase])
             rollyaw.append(root_value_yaw_roll)
             pitchyaw.append(root_value_yaw_pitch)
             rotation_RMS.append(root_value_all)
 
         fig, ax = plt.subplots()
-        ax.plot(variableXaxis,yawRMS, label = 'RMS values of yaw-response')
-        ax.plot(variableXaxis,rotation_RMS, label='Root value of rotation RMS')
-        ax.plot(variableXaxis,rollyaw, label='Root value of roll and yaw RMS')
-        ax.plot(variableXaxis,pitchyaw, label='Root value of pitch and yaw RMS')
-        ax.set_xlabel(f'{self.changeType} {unit}')
+        ax.plot(variableXaxis,rollRMS, ':', label = 'RMS values of yaw-response')
+        ax.plot(variableXaxis,pitchRMS, ':', label = 'RMS values of yaw-response')
+        ax.plot(variableXaxis,yawRMS, ':', label = 'RMS values of yaw-response')
+        ax.plot(variableXaxis,rollyaw, '--', label='Root value of roll and yaw RMS')
+        ax.plot(variableXaxis,pitchyaw, '--', label='Root value of pitch and yaw RMS')
+        ax.plot(variableXaxis,rotation_RMS, '-', label='Root value of rotation RMS')
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel(string_x_axis)
         ax.set_ylabel('Root of RMS values [-]')
         ax.set_title('RMS values for rotational DOFs')
         ax.legend()
