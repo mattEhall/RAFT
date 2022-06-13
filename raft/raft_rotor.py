@@ -227,12 +227,12 @@ class Rotor:
         
         # evaluate aero loads and derivatives with CCBlade
         loads, derivs = self.ccblade.evaluate(Uhub, Omega_rpm, pitch_deg, coefficients=True)
-
         # organize and save the relevant outputs...
         self.U_case         = Uhub
         self.Omega_case     = Omega_rpm
         self.aero_torque    = loads["Q"][0]
         self.aero_power     = loads["P"][0]
+        self.aero_thrust    = loads["T" ][0]
         self.pitch_case     = pitch_deg
 
         outputs = {}
@@ -247,7 +247,7 @@ class Rotor:
         outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
 
 
-        print(f"Wind speed: {Uhub} m/s, Aerodynamic power coefficient: {loads['CP'][0]:4.3f}")
+        # print(f"Wind speed: {Uhub} m/s, Aerodynamic power coefficient: {loads['CP'][0]:4.3f}")
 
         J={} # Jacobian/derivatives
 
@@ -483,8 +483,8 @@ class Rotor:
             # draw outline
             ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], color=color) # leading edge  
             ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color)  # trailing edge
-            
-            
+
+
         #for j in range(m):
         #    linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k'))  # station rings
         #
@@ -547,7 +547,7 @@ class Rotor:
             sigma_1 = iec_wind.EWM(V_ref)
         else:
             raise Exception("Wind model must be either NTM, ETM, or EWM. While you wrote " + TurbMod)
-
+        # print(f'sigma_1 = {sigma_1}')
         # Compute turbulence scale parameter Annex C3 of IEC 61400-1-2019
         # Longitudinal
         if HH <= 60:
@@ -600,7 +600,7 @@ if __name__=='__main__':
     design['turbine']['shearExp'] = design['site']['shearExp']
 
     # Set up thrust verification cases
-    print('here')
+    # print('here')
     UU = [8,12,16]
     for i_case in range(len(UU)):
         design['cases']['data'][i_case][0] = UU[i_case]     # wind speed

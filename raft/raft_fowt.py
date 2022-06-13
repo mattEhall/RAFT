@@ -391,8 +391,8 @@ class FOWT():
             wMax_HAMS = max(wMax, max(self.w))         # make sure the HAMS runs includes both RAFT and export frequency extents
             
             nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
-            ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
-                                  numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS ,numHeadings=nHeadings, minHeading=minHeading, dHeading=headingStep, numThreads=self.numThreads)
+            # ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
+            #                       numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS ,numHeadings=nHeadings, minHeading=minHeading, dHeading=headingStep, numThreads=self.numThreads)
                                   
             # Note about zero/infinite frequencies from WAMIT-formatted output files (as per WAMIT v7 manual): 
             # The limiting values of the added-mass coefficients may be evaluated for zero or infinite
@@ -796,13 +796,14 @@ class FOWT():
             direction = ''
             multiplyfordirection = 1
             couplingterm2 = 3
+            I_RNA = self.IrRNA
         elif direction in ['SS','Side-to-Side','sideside']:
             var1 = 1
             var2 = 3
             direction = 'SS'
             multiplyfordirection = -1
             couplingterm2 = 4
-
+            I_RNA = self.IxRNA
         m_turbine   = self.mtower + self.mRNA                                       # turbine total mass
         zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine # turbine center of gravity
         zBase = self.memberList[-1].rA[2]                                           # tower base elevation [m]
@@ -810,7 +811,7 @@ class FOWT():
         aCG_turbine = -self.w**2 *(multiplyfordirection*Xi[var1,:] + zCG_turbine*Xi[var2,:] )                 # fore-aft acceleration of turbine CG
         # turbine pitch moment of inertia about CG [kg-m^2]
         ICG_turbine = (translateMatrix6to6DOF(self.memberList[-1].M_struc, [0,0,-zCG_turbine])[var2,var2]     # tower MOI about turbine CG
-                       + self.mRNA*(self.hHub-zCG_turbine)**2 + self.IrRNA   )                          # RNA MOI with parallel axis theorem
+                       + self.mRNA*(self.hHub-zCG_turbine)**2 + I_RNA   )                          # RNA MOI with parallel axis theorem
         # moment components and summation (all complex amplitudes)
         M_I1     = -m_turbine*aCG_turbine*hArm
         M_I2     =    - ICG_turbine*(-self.w**2 *Xi[var2,:] ) # tower base inertial reaction moment
@@ -937,7 +938,7 @@ class FOWT():
             results['power_avg'][iCase]    = self.rotor.aero_power # compute from cc-blade coeffs
             # results['power_std'][iCase]     # nonlinear near rated, covered by torque_ and omega_std
             # results['power_max'][iCase]     # skip, nonlinear
-
+            results['thrust_avg'][iCase]   = self.rotor.aero_thrust
             
             # collective blade pitch (deg)
             bPitch_w = (1j * self.w * self.rotor.kp_beta + self.rotor.ki_beta) * phi_w

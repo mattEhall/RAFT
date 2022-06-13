@@ -3,10 +3,16 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import cm
+from matplotlib import cm, rc
 import yaml
+rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+# rc('text', usetex=True)
+
 from fatiguepy import *
+
 from joblib import Parallel, delayed
+from tqdm import tqdm
+
 from copy import copy, deepcopy
 
 import moorpy as mp
@@ -21,7 +27,7 @@ TwoPi = 2.0*np.pi
 class Model():
 
 
-    def __init__(self, design, nTurbines=1):
+    def __init__(self, design, nTurbines=1, parametricAnalysisBool = False, variableSensitivitystudy = None,startValueSensitivityStudy = None):
         '''
         Empty frequency domain model initialization function
 
@@ -36,13 +42,15 @@ class Model():
 
         self.nDOF = 0  # number of DOFs in system
 
-        if 'parametricAnalysis' not in design:
-            self.design = design # save design dictionary for possible later use/reference
-        else:
-            self.changeType = getFromDict(design['parametricAnalysis'], 'changeType', dtype=str)
-            print(self.changeType)
-            self.design = parametricAnalysis(design, self.changeType)
+        if parametricAnalysisBool and variableSensitivitystudy is not None:
+            self.changeType = variableSensitivitystudy
+            print(f'Sensitivity study for variable {self.changeType} starting now...')
+            self.design = parametricAnalysis(design, self.changeType, startValueSensitivityStudy, parametricAnalysisBool)
 
+        else:
+
+            self.design = design # save design dictionary for possible later use/reference
+            self.changeType = ""
         # print(self.design['cases'])
         # parse settings
         if not 'settings' in design:    # if settings field not in input data
@@ -57,6 +65,7 @@ class Model():
         self.nw = len(self.w)  # number of frequencies
         self.numAngles = int(getFromDict(design['settings'],'numAngles', default=73)) #to cover 0 to 360 in steps of 5 for calculation of stress around tb
         self.anglesArray = np.linspace(0,2*np.pi,self.numAngles)
+        self.printStatements = getFromDict(design['settings'], 'printStatements', default = True)
 
         # process mooring information 
         self.ms = mp.System()
@@ -209,7 +218,9 @@ class Model():
         self.results['case_metrics']['power_avg'] = np.zeros(nCases)
         self.results['case_metrics']['power_std'] = np.zeros(nCases)    
         self.results['case_metrics']['power_max'] = np.zeros(nCases)   
-        self.results['case_metrics']['power_PSD'] = np.zeros([nCases,self.nw])        
+        self.results['case_metrics']['power_PSD'] = np.zeros([nCases,self.nw])
+        # rotor thrust
+        self.results['case_metrics']['thrust_avg'] = np.zeros(nCases)
         # collective blade pitch
         self.results['case_metrics']['bPitch_avg'] = np.zeros(nCases)   
         self.results['case_metrics']['bPitch_std'] = np.zeros(nCases)    
@@ -274,7 +285,7 @@ class Model():
             # (could solve mooring and offsets a second time, but likely overkill)
             
             # solve system dynamics
-            self.solveDynamics(case)
+            _ , M_tot , B_tot , C_tot  = self.solveDynamics(case)
 
 # ------------------------------------------------------------------------
             Xi0_store = fowt.Xi0
@@ -282,14 +293,21 @@ class Model():
             Mooring_C = self.J_moor
             Mooring_T = self.T_moor
 
-            return Xi0_store, Xi_store, Mooring_C, Mooring_T
+            return Xi0_store, Xi_store, Mooring_C, Mooring_T, M_tot , B_tot , C_tot, fowt.A_aero, fowt.B_aero
 
-        res = Parallel(n_jobs=-2, verbose=10)(delayed(evaluateCases)(iCase) for iCase in range(nCases))
+        res = Parallel(n_jobs=numberOfCores)(delayed(evaluateCases)(iCase) for iCase in tqdm(range(nCases)))
+        print('Calculation of cases finish, start storing the results and post processing now.')
 
         Xi0_store = [item[0] for item in res]
         Xi_store = [item[1] for item in res]
         Mooring_C = [item[2] for item in res]
         Mooring_T = [item[3] for item in res]
+        self.M_tot_store = [item[4] for item in res]
+        self.B_tot_store = [item[5] for item in res]
+        self.C_tot_store = [item[6] for item in res]
+        self.fowt_A_aero_stored = [item[7] for item in res]
+        self.fowt_B_aero_stored = [item[8] for item in res]
+
         # results_store = [item[4] for item in res]
 
 
@@ -395,14 +413,15 @@ class Model():
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
         
-        print("Equilibrium'3' platform positions/rotations:")
+        # print("Equilibrium'3' platform positions/rotations:")
         #printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
         fowt.Xi0 = np.array(r6eq)   # save current mean offsets for the FOWT
         #self.ms.plot()
 
-        print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
+        if self.printStatements:
+            print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
 
         try:
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
@@ -543,7 +562,7 @@ class Model():
 
         nIter = 2  # maximum number of iterations to allow
         '''
-        
+
         nIter = int(self.nIter) + 1         # maybe think of a better name for the first nIter
         XiStart = self.XiStart
         
@@ -643,21 +662,18 @@ class Model():
             # check for convergence
             tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
             if (tolCheck < tol).all():
-                print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
+                if self.printStatements:
+                    print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
                 break
             else:
                 XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                 # (uses hard-coded successive under relaxation for now)
-                print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
+                if self.printStatements:
+                    print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
     
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
 
-        # TODO: Add store/plotting of coupling terms A, B, C matrices wrt to roll-roll. pitch-pitch terms.
-        self.M_tot = M_tot
-        self.B_tot = B_tot
-        self.C_tot = C_tot
-        self.F_tot = F_tot
 
         if conv_plot:
             # labels for convergence plots
@@ -704,7 +720,7 @@ class Model():
 
         self.results['response'] = {}   # signal this data is available by adding a section to the results dictionary
 
-        return Xi  # currently returning the response rather than saving in the model object
+        return Xi, M_tot, B_tot, C_tot  # currently returning the response rather than saving in the model object
 
 
 
@@ -932,35 +948,14 @@ class Model():
             plt.legend()
             plt.xlabel('Location around TB circumference (deg)')
             plt.title('Fatigue Damage Equivalant Load Around TB [MPa]')
+            plt.grid()
 
         if plot_eq_stress_angles:
-            fig,ax = plt.subplots()
             variableXaxis = []
+            fig,ax = plt.subplots()
             for iCase in range(nCases):
                 cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
-                if self.changeType == 'misalignment':
-                    variableXaxis.append(cases['wave_heading2'])
-                    string_x_axis = 'Misalignment second wave system [deg]'
-                elif self.changeType == 'misalignment1':
-                    variableXaxis.append(cases['wave_heading1'])
-                    string_x_axis = 'Misalignment first wave system [deg]'
-                elif self.changeType == 'floaterRotation':
-                    rotationAngle = getFromDict(self.design['parametricAnalysis'], 'rotationAngle')
-                    variableXaxis.append(
-                        iCase * rotationAngle)  # not robust, now only works for single base case being rotated
-                    string_x_axis = 'Floater rotation [deg]'
-                elif self.changeType == 'waveHeight1':
-                    variableXaxis.append(cases['wave_height'])
-                    string_x_axis = 'Wave Height system 1 [m]'
-                elif self.changeType == 'waveHeight2':
-                    variableXaxis.append(cases['wave_height2'])
-                    string_x_axis = 'Wave Height system 2 [m]'
-                elif self.changeType == 'wavePeriod1':
-                    variableXaxis.append(cases['wave_period'])
-                    string_x_axis = 'Wave Period system 1 [s]'
-                elif self.changeType == 'wavePeriod2':
-                    variableXaxis.append(cases['wave_period2'])
-                    string_x_axis = 'Wave Period system 2 [s]'
+                variableXaxis, string_x_axis = retrieveAxisParAnalysis(iCase, cases, self.changeType, variableXaxis, self.design['parametricAnalysis'])
             ax.plot(variableXaxis, np.amax(metrics['DEL_angles'][:,:],1),label='Max eq stress')
             ax.plot(variableXaxis, np.amin(metrics['DEL_angles'][:, :], 1),label='Min eq stress')
             ax.set_xlabel(string_x_axis)
@@ -989,7 +984,7 @@ class Model():
                       # stressMesh[1,1]-stressMesh[0,0],
                       # DK_ps.flatten())
 
-    def RMSmisalignresponse(self):
+    def RMSmisalignresponse(self, singleDOF = True, twoDOF = False, RootRMS= True):
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
         rotation_RMS = []
@@ -1002,28 +997,7 @@ class Model():
         # print(dict(zip(self.design['cases']['keys'], self.design['cases']['data'])))
         for iCase in range(nCases):
             cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
-            if self.changeType == 'misalignment':
-                variableXaxis.append(cases['wave_heading2'])
-                string_x_axis = 'Misalignment second wave system [deg]'
-            elif self.changeType == 'misalignment1':
-                variableXaxis.append(cases['wave_heading1'])
-                string_x_axis = 'Misalignment first wave system [deg]'
-            elif self.changeType == 'floaterRotation':
-                rotationAngle = getFromDict(self.design['parametricAnalysis'], 'rotationAngle')
-                variableXaxis.append(iCase * rotationAngle)  # not robust, now only works for single base case being rotated
-                string_x_axis = 'Floater rotation [deg]'
-            elif self.changeType == 'waveHeight1':
-                variableXaxis.append(cases['wave_height'])
-                string_x_axis = 'Wave Height system 1 [m]'
-            elif self.changeType == 'waveHeight2':
-                variableXaxis.append(cases['wave_height2'])
-                string_x_axis = 'Wave Height system 2 [m]'
-            elif self.changeType == 'wavePeriod1':
-                variableXaxis.append(cases['wave_period'])
-                string_x_axis = 'Wave Period system 1 [s]'
-            elif self.changeType == 'wavePeriod2':
-                variableXaxis.append(cases['wave_period2'])
-                string_x_axis = 'Wave Period system 2 [s]'
+            variablXaxis, string_x_axis = retrieveAxisParAnalysis(iCase, cases, self.changeType, variableXaxis, self.design['parametricAnalysis'])
             root_value_yaw_roll = (metrics['roll_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
             root_value_yaw_pitch = (metrics['pitch_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
             root_value_all = (metrics['roll_std'][iCase]**2+metrics['pitch_std'][iCase]**2+metrics['yaw_std'][iCase]**2)**0.5
@@ -1035,12 +1009,15 @@ class Model():
             rotation_RMS.append(root_value_all)
 
         fig, ax = plt.subplots()
-        ax.plot(variableXaxis,rollRMS, ':', label = 'RMS values of yaw-response')
-        ax.plot(variableXaxis,pitchRMS, ':', label = 'RMS values of yaw-response')
-        ax.plot(variableXaxis,yawRMS, ':', label = 'RMS values of yaw-response')
-        ax.plot(variableXaxis,rollyaw, '--', label='Root value of roll and yaw RMS')
-        ax.plot(variableXaxis,pitchyaw, '--', label='Root value of pitch and yaw RMS')
-        ax.plot(variableXaxis,rotation_RMS, '-', label='Root value of rotation RMS')
+        if singleDOF:
+            ax.plot(variableXaxis,rollRMS, '-', label = 'RMS values of roll-response')
+            ax.plot(variableXaxis,pitchRMS, '-', label = 'RMS values of pitch-response')
+            ax.plot(variableXaxis,yawRMS, '-', label = 'RMS values of yaw-response')
+        if twoDOF:
+            ax.plot(variableXaxis,rollyaw, ':', label='Root value of roll and yaw RMS')
+            ax.plot(variableXaxis,pitchyaw, ':', label='Root value of pitch and yaw RMS')
+        if RootRMS:
+            ax.plot(variableXaxis,rotation_RMS, '--', label='Root value of pitch, roll and yaw RMS')
         ax.set_ylim(bottom=0)
         ax.set_xlabel(string_x_axis)
         ax.set_ylabel('Root of RMS values [-]')
@@ -1048,6 +1025,24 @@ class Model():
         ax.legend()
         ax.grid()
     # self.design['cases']['data'][iCase]
+
+    def plotPowerThrust(self):
+        variableXaxis = []
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+        for iCase in range(nCases):
+            cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+            variableXaxis, string_x_axis = retrieveAxisParAnalysis(iCase, cases, self.changeType, variableXaxis, self.design['parametricAnalysis'])
+        fig, ax1 = plt.subplots()
+        ax2 = ax1.twinx()
+        ax1.plot(variableXaxis,metrics['power_avg'][:]/10**6, 'g-')
+        ax2.plot(variableXaxis, metrics['thrust_avg'][:]/10**6, 'b-')
+        ax1.set_xlabel(string_x_axis)
+        ax1.set_ylabel('Generated Power [MW]', color='g')
+        ax2.set_ylabel('Thrust on rotor [MW]', color='b')
+        ax1.set_title('Turbine characteristics')
+        ax1.legend()
+        ax1.grid()
 
     def plotCouplingTerms(self):
         metrics = self.results['case_metrics']
@@ -1063,13 +1058,13 @@ class Model():
 
 
                     if dof2 == 5:
-                        ax[0, dof - 3].plot(self.w, self.M_tot[dof, dof2, :], '--', label=f'(M+A)({dof + 1},{dof2 + 1})')
-                        ax[1, dof - 3].plot(self.w, self.M_tot[dof, dof2, :], '--', label=f'B({dof + 1},{dof2 + 1})')
-                        ax[2,dof-3].plot(self.w, self.M_tot[dof, dof2, :], '--', label=f'C({dof + 1},{dof2 + 1})')
+                        ax[0, dof - 3].plot(self.w, self.M_tot_store[iCase][dof, dof2, :], '--', label=f'(M+A)({dof + 1},{dof2 + 1})')
+                        ax[1, dof - 3].plot(self.w, self.B_tot_store[iCase][dof, dof2, :], '--', label=f'B({dof + 1},{dof2 + 1})')
+                        ax[2,dof-3].plot(self.w, self.C_tot_store[iCase][dof, dof2, :], '--', label=f'C({dof + 1},{dof2 + 1})')
                     else:
-                        ax[0, dof-3].plot(self.w, self.M_tot[dof, dof2, :], label=f'(M+A)({dof + 1},{dof2 + 1})')
-                        ax[1, dof-3].plot(self.w, self.B_tot[dof, dof2, :], label=f'B({dof + 1},{dof2 + 1})')
-                        ax[2, dof-3].plot(self.w, self.C_tot[dof, dof2, :], label=f'C({dof + 1},{dof2 + 1})')
+                        ax[0, dof-3].plot(self.w, self.M_tot_store[iCase][dof, dof2, :], label=f'(M+A)({dof + 1},{dof2 + 1})')
+                        ax[1, dof-3].plot(self.w, self.B_tot_store[iCase][dof, dof2, :], label=f'B({dof + 1},{dof2 + 1})')
+                        ax[2, dof-3].plot(self.w, self.C_tot_store[iCase][dof, dof2, :], label=f'C({dof + 1},{dof2 + 1})')
                     ax[0, dof - 3].legend()
                     ax[1, dof - 3].legend()
                     ax[2, dof - 3].legend()
@@ -1083,7 +1078,7 @@ class Model():
             ax[0,0].set_ylabel('(M+A) terms [kg m^2]')
             ax[1,0].set_ylabel('B terms [kg m/s]')
             ax[2,0].set_ylabel('C terms [kg m/s^2]')
-            fig.suptitle('Roll, Pitch, Yaw diagonal and coupling terms.')
+            fig.suptitle(f'Roll, Pitch, Yaw diagonal and coupling terms.')
 
     def plotBEMTerms(self):
         fowt = self.fowtList[0]
@@ -1116,11 +1111,44 @@ class Model():
             ax[1,0].set_ylabel('B_BEM terms [kg m/s]')
             fig.suptitle('Roll, Pitch, Yaw BEM diagonal and coupling terms.')
 
+    def plotAeroTerms(self):
+        # fowt = self.fowtList[0]
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        DOF1 = [4, 6]
+        DOF2 = [4, 6]
+
+        for iCase in range(nCases):
+            fig, ax = plt.subplots(2, 3, sharex=True)
+            for dof in range(DOF1[0] - 1, DOF1[1]):
+                for dof2 in range(DOF2[0] - 1, DOF2[1]):
+                    if dof2 == 5:
+                        ax[0, dof - 3].plot(self.w, self.fowt_A_aero_stored[iCase][dof, dof2, :], '--', label=f'A({dof + 1},{dof2 + 1})')
+                        ax[1, dof - 3].plot(self.w, self.fowt_B_aero_stored[iCase][dof, dof2, :], '--', label=f'B({dof + 1},{dof2 + 1})')
+                    else:
+                        ax[0, dof - 3].plot(self.w, self.fowt_A_aero_stored[iCase][dof, dof2, :], label=f'A({dof + 1},{dof2 + 1})')
+                        ax[1, dof - 3].plot(self.w, self.fowt_B_aero_stored[iCase][dof, dof2, :], label=f'B({dof + 1},{dof2 + 1})')
+                    ax[0, dof - 3].legend()
+                    ax[1, dof - 3].legend()
+
+            ax[0, 0].set_title('Roll')
+            ax[0, 1].set_title('Pitch')
+            ax[0, 2].set_title('Yaw')
+            ax[1, 0].set_xlabel('Frequency [Hz]')
+            ax[1, 1].set_xlabel('Frequency [Hz]')
+            ax[1, 2].set_xlabel('Frequency [Hz]')
+            ax[0, 0].set_ylabel('A_aero terms [kg m^2]')
+            ax[1, 0].set_ylabel('B_aero terms [kg m/s]')
+            fig.suptitle('Roll, Pitch, Yaw Aerodynamic diagonal and coupling terms.')
+
     def plotCouplingContribution(self):
 
-        M_A_contr = np.zeros_like(self.M_tot)
-        B_contr = np.zeros_like(self.B_tot)
-        C_contr = np.zeros_like(self.C_tot)
+        # a loop could be added here for an array
+        fowt = self.fowtList[0]
+        M_A_contr = np.zeros_like(fowt.A_BEM, dtype=complex)
+        B_contr = np.zeros_like(fowt.B_BEM, dtype= complex)
+        C_contr = np.zeros_like(fowt.B_BEM, dtype=complex)
 
 
 
@@ -1132,12 +1160,13 @@ class Model():
 
         for iCase in range(nCases):
             fig, ax = plt.subplots(3, 3, sharex=True)
+
             for dof in range(DOF1[0]-1,DOF1[1]):
                 for dof2 in range (DOF2[0]-1,DOF2[1]):
 
-                    M_A_contr[dof, dof2, :] = np.multiply(-self.w[:] ** 2, np.multiply(self.M_tot[dof, dof2,:] ,self.Xi[dof2, :]))
-                    B_contr[dof, dof2, :] = np.multiply(1j * self.w[:], np.multiply(self.B_tot[dof, dof2, :], self.Xi[dof2, :]))
-                    C_contr[dof, dof2, :] = np.multiply(self.C_tot[dof, dof2, :], self.Xi[dof2, :])
+                    M_A_contr[dof, dof2, :] = np.multiply(-self.w[:] ** 2, np.multiply(self.M_tot_store[iCase][dof, dof2,:] ,self.Xi[dof2, :]))
+                    B_contr[dof, dof2, :] = np.multiply(1j * self.w[:], np.multiply(self.B_tot_store[iCase][dof, dof2, :], self.Xi[dof2, :]))
+                    C_contr[dof, dof2, :] = np.multiply(self.C_tot_store[iCase][dof, dof2, :], self.Xi[dof2, :])
 
 
                     if dof2 == 5:

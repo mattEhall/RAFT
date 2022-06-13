@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+
 # ---------------------------- misc classes -----------------------------------
 
 
@@ -696,7 +697,7 @@ def getUniqueCaseHeadings(keys, values):
         numberOfHeadings = 1
     return caseHeadings, headingStep, numberOfHeadings # only have unique values in evaluated list, otherwise possibly issues with np.diff
 
-def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 10, thickness= 0.083):
+def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 7, thickness= 0.114):
     """Function to retrieve Axial stress (sigma_x) around tower base circumference using tower base bending"""
     # angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
     angleMeshFA, TBFAMesh = np.meshgrid(angles, TBFA)
@@ -711,12 +712,13 @@ def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 
     ANGLESMesh, FREQMesh = np.meshgrid(angles, frequencies)
     return getPSD(sigmaX/10**6), ANGLESMesh, FREQMesh
 
-def parametricAnalysis(design, changeType):
+def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametricAnalysis= False):
 
-    if getFromDict(design['parametricAnalysis'], 'parametricChange', default=False):
+    if parametricAnalysis:
         misalignmentAngle = getFromDict(design['parametricAnalysis'], 'misalignmentAngle')
         numMisalignAngles = getFromDict(design['parametricAnalysis'], 'numMisalign', dtype=int)
         if misalignmentAngle is not None and numMisalignAngles is not None and changeType == 'misalignment':
+            design['cases']['data'][0][13] = startValueSensitivityStudy
             for misalign in range(numMisalignAngles):
                 add_design = design['cases']['data'][0].copy()
                 add_design[13] += misalignmentAngle * (misalign + 1)
@@ -732,9 +734,19 @@ def parametricAnalysis(design, changeType):
                 add_design[13] += rotationAngle * (misalign + 1)
                 design['cases']['data'].append(add_design)
 
+        windSpeedIncrement = getFromDict(design['parametricAnalysis'], 'windSpeedIncrement')
+        numWSIncrements = getFromDict(design['parametricAnalysis'], 'numWSIncrements', dtype=int)
+        if windSpeedIncrement is not None and numWSIncrements is not None and changeType == 'windSpeed':
+            design['cases']['data'][0][0] = startValueSensitivityStudy
+            for numIncr in range(numWSIncrements):
+                add_design = design['cases']['data'][0].copy()
+                add_design[0] += windSpeedIncrement * (numIncr + 1)
+                design['cases']['data'].append(add_design)
+
         waveHeightIncrement1 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement1')
         numWHincrements1 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int)
         if waveHeightIncrement1 is not None and numWHincrements1 is not None and changeType == 'waveHeight1':
+            design['cases']['data'][0][7] = startValueSensitivityStudy
             for numIncr in range(numWHincrements1):
                 add_design = design['cases']['data'][0].copy()
                 add_design[7] += waveHeightIncrement1 * (numIncr + 1)
@@ -743,6 +755,7 @@ def parametricAnalysis(design, changeType):
         waveHeightIncrement2 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement2')
         numWHincrements2 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int)
         if waveHeightIncrement2 is not None and numWHincrements2 is not None and changeType == 'waveHeight2':
+            design['cases']['data'][0][12] = startValueSensitivityStudy
             for numIncr in range(numWHincrements2):
                 add_design = design['cases']['data'][0].copy()
                 add_design[12] += waveHeightIncrement2 * (numIncr + 1)
@@ -751,6 +764,7 @@ def parametricAnalysis(design, changeType):
         wavePeriodIncrement1 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement1')
         numWPincrements1 = getFromDict(design['parametricAnalysis'], 'numWPIncrements1', dtype=int)
         if wavePeriodIncrement1 is not None and numWPincrements1 is not None and changeType == 'wavePeriod1':
+            design['cases']['data'][0][6] = startValueSensitivityStudy
             for numIncr in range(numWPincrements1):
                 add_design = design['cases']['data'][0].copy()
                 add_design[6] += wavePeriodIncrement1 * (numIncr + 1)
@@ -759,6 +773,7 @@ def parametricAnalysis(design, changeType):
         wavePeriodIncrement2 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement2')
         numWPincrements2 = getFromDict(design['parametricAnalysis'], 'numWPIncrements2', dtype=int)
         if wavePeriodIncrement2 is not None and numWPincrements2 is not None and changeType == 'wavePeriod2':
+            design['cases']['data'][0][11] = startValueSensitivityStudy
             for numIncr in range(numWPincrements2):
                 add_design = design['cases']['data'][0].copy()
                 add_design[11] += wavePeriodIncrement2 * (numIncr + 1)
@@ -768,6 +783,39 @@ def parametricAnalysis(design, changeType):
 
     else:
         return design
+
+def retrieveAxisParAnalysis(iCase, cases, changeType, variableXaxis, parametricAnalysisDict):
+
+
+    if changeType == 'misalignment':
+        variableXaxis.append(cases['wave_heading2'])
+        string_x_axis = 'Misalignment second wave system [deg]'
+    elif changeType == 'misalignment1':
+        variableXaxis.append(cases['wave_heading1'])
+        string_x_axis = 'Misalignment first wave system [deg]'
+    elif changeType == 'floaterRotation':
+        rotationAngle = getFromDict(parametricAnalysisDict, 'rotationAngle')
+        variableXaxis.append(iCase * rotationAngle)  # not robust, now only works for single base case being rotated
+        string_x_axis = 'Floater rotation [deg]'
+    elif changeType == 'windSpeed':
+        variableXaxis.append(cases['wind_speed'])
+        string_x_axis = 'Average Wind Speed [m/s]'
+    elif changeType == 'waveHeight1':
+        variableXaxis.append(cases['wave_height'])
+        string_x_axis = 'Wave Height system 1 [m]'
+    elif changeType == 'waveHeight2':
+        variableXaxis.append(cases['wave_height2'])
+        string_x_axis = 'Wave Height system 2 [m]'
+    elif changeType == 'wavePeriod1':
+        variableXaxis.append(cases['wave_period'])
+        string_x_axis = 'Wave Period system 1 [s]'
+    elif changeType == 'wavePeriod2':
+        variableXaxis.append(cases['wave_period2'])
+        string_x_axis = 'Wave Period system 2 [s]'
+    return variableXaxis, string_x_axis
+
+
+
 
 if __name__ == '__main__':
     
