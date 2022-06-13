@@ -20,14 +20,17 @@ model.analyzeUnloaded()
 model.solveEigen()
 
 # Simule the different load cases
-model.analyzeCases(display=1)
+model.analyzeCases(display=False, numberOfCores= -2)
 
 # Plot the power spectral densities from the load cases
-model.plotResponses_extended()
-
+# model.plotResponses_extended()
+# model.plotBEMTerms()
+# model.plotAeroTerms()
+# model.plotCouplingTerms()
 model.plotTowerBaseResponse(include_surface = False)
 model.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-model.RMSmisalignresponse()
+model.RMSmisalignresponse(RootRMS= False)
+model.plotPowerThrust()
 # model.plotCouplingTerms()
 # model.plotBEMTerms()
 # model.plotCouplingContribution()
@@ -40,5 +43,4 @@ toc = time.perf_counter()
 print(f"Ran all cases in {toc - tic:0.4f} seconds")
 
 plt.show()
-for i in plt.get_fignums():
-    plt.figure(i).savefig(f'figures/figure22042022_{i}.png')
+
