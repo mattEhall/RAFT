@@ -724,6 +724,15 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[13] += misalignmentAngle * (misalign + 1)
                 design['cases']['data'].append(add_design)
 
+        windMisalignmentAngle = getFromDict(design['parametricAnalysis'], 'windMisalignmentAngle')
+        numWindMisalignAngles = getFromDict(design['parametricAnalysis'], 'numWindMisalign', dtype=int)
+        if windMisalignmentAngle is not None and numWindMisalignAngles is not None and changeType == 'windMisalignment':
+            design['cases']['data'][0][1] = startValueSensitivityStudy
+            for angle in range(numWindMisalignAngles):
+                add_design = design['cases']['data'][0].copy()
+                add_design[1] += windMisalignmentAngle * (angle + 1)
+                design['cases']['data'].append(add_design)
+
         rotationAngle = getFromDict(design['parametricAnalysis'], 'rotationAngle')
         numRotations = getFromDict(design['parametricAnalysis'], 'numRotations', dtype=int)
         if rotationAngle is not None and numRotations is not None and changeType == 'floaterRotation':
@@ -780,41 +789,89 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 design['cases']['data'].append(add_design)
 
         return design
-
     else:
         return design
 
 def retrieveAxisParAnalysis(iCase, cases, changeType, variableXaxis, parametricAnalysisDict):
 
-
     if changeType == 'misalignment':
         variableXaxis.append(cases['wave_heading2'])
         string_x_axis = 'Misalignment second wave system [deg]'
+        title_string = f'Misalignment WS 2 $= {variableXaxis[-1]:10.2f}$ [deg]'
     elif changeType == 'misalignment1':
         variableXaxis.append(cases['wave_heading1'])
         string_x_axis = 'Misalignment first wave system [deg]'
+        title_string = f'Misalignment WS 1 $= {variableXaxis[-1]:10.2f}$ [deg]'
+    elif changeType == 'windMisalignment':
+        variableXaxis.append(cases['wind_heading'])
+        string_x_axis = 'Wind heading [deg]'
+        title_string = f'Misalignment Wind $= {variableXaxis[-1]:10.2f}$ [deg]'
+
     elif changeType == 'floaterRotation':
         rotationAngle = getFromDict(parametricAnalysisDict, 'rotationAngle')
         variableXaxis.append(iCase * rotationAngle)  # not robust, now only works for single base case being rotated
         string_x_axis = 'Floater rotation [deg]'
+        title_string = f'Floater Rotation $= {variableXaxis[-1]:10.2f}$ [deg]'
     elif changeType == 'windSpeed':
         variableXaxis.append(cases['wind_speed'])
         string_x_axis = 'Average Wind Speed [m/s]'
+        title_string = f'$U_{{ave}} = {variableXaxis[-1]:10.2f}$ [m/s]'
     elif changeType == 'waveHeight1':
         variableXaxis.append(cases['wave_height'])
         string_x_axis = 'Wave Height system 1 [m]'
+        title_string = f'WS1 $H_{{s}}={variableXaxis[-1]:10.2f}$ [m]'
     elif changeType == 'waveHeight2':
         variableXaxis.append(cases['wave_height2'])
         string_x_axis = 'Wave Height system 2 [m]'
+        title_string = f'WS2 $H_{{s}}={variableXaxis[-1]:10.2f}$ [m]'
     elif changeType == 'wavePeriod1':
         variableXaxis.append(cases['wave_period'])
         string_x_axis = 'Wave Period system 1 [s]'
+        title_string = f'WS1 $T_{{p}}={variableXaxis[-1]:10.2f}$ [s]'
     elif changeType == 'wavePeriod2':
         variableXaxis.append(cases['wave_period2'])
         string_x_axis = 'Wave Period system 2 [s]'
-    return variableXaxis, string_x_axis
+        title_string = f'WS2 $T{{p}}={variableXaxis[-1]:10.2f}$ [s]'
+    return variableXaxis, string_x_axis, title_string
 
+def get_figsize(width, fraction=1, subplots=(1, 1)):
+    """Set figure dimensions to avoid scaling in LaTeX.
 
+    Parameters
+    ----------
+    width: float or string
+            Document width in points, or string of predined document type
+    fraction: float, optional
+            Fraction of the width which you wish the figure to occupy
+    subplots: array-like, optional
+            The number of rows and columns of subplots.
+    Returns
+    -------
+    fig_dim: tuple
+            Dimensions of figure in inches
+    """
+    if width == 'thesis':
+        width_pt = 426.79135
+    elif width == 'beamer':
+        width_pt = 307.28987
+    else:
+        width_pt = width
+
+    # Width of figure (in pts)
+    fig_width_pt = width_pt * fraction
+    # Convert from pt to inches
+    inches_per_pt = 1 / 72.27
+
+    # Golden ratio to set aesthetic figure height
+    # https://disq.us/p/2940ij3
+    golden_ratio = (5**.5 - 1) / 2
+
+    # Figure width in inches
+    fig_width_in = fig_width_pt * inches_per_pt
+    # Figure height in inches
+    fig_height_in = fig_width_in * golden_ratio * (subplots[0] / subplots[1])
+
+    return (fig_width_in, fig_height_in)
 
 
 if __name__ == '__main__':

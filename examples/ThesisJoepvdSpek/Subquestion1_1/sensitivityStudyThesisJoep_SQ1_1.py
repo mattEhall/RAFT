@@ -15,9 +15,11 @@ from raft.sensitivityStudyFunctions import runRaftSensitivity, saveFigures
 saveFiguresLocation = '/Volumes/GoogleDrive/My Drive/Graduation/Figures/Thesis/SQ1_1'
 tic = time.perf_counter()
 # open the design YAML file and parse it into a dictionary for passing to raft
+file = '/Users/joepvanderspek/PycharmProjects/RAFT/examples/ThesisJoepvdSpek/Subquestion1_1/SQ1_1.yaml'
+
 
 '''Change floater Orientation from 0 deg to 120 deg'''
-modelFO = runRaftSensitivity('SQ1_1.yaml', variableSensitivitystudy = 'floaterRotation', startValueSensitivityStudy = 0)
+modelFO = runRaftSensitivity(file, variableSensitivitystudy = 'floaterRotation', startValueSensitivityStudy = 0)
 
 modelFO.plotBEMTerms()
 modelFO.plotAeroTerms()
@@ -27,32 +29,42 @@ modelFO.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 
 saveFigures(modelFO,saveFiguresLocation)
 
+'''Change misalignment angle Wave system 2 from 0 deg to 180 deg'''
+modelMA1 = runRaftSensitivity(file, variableSensitivitystudy = 'misalignment', startValueSensitivityStudy = 0)
+
+modelMA1.plotBEMTerms()
+modelMA1.plotAeroTerms()
+modelMA1.plotCouplingTerms()
+modelMA1.plotCouplingContribution()
+modelMA1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+
+saveFigures(modelMA1, saveFiguresLocation)
+
 '''Change wave period of system 2 from 0.1 s to 25 seconds'''
-modelWP2 = runRaftSensitivity('SQ1_1.yaml', variableSensitivitystudy = 'wavePeriod2', startValueSensitivityStudy = 0.1)
+modelWP2 = runRaftSensitivity(file, variableSensitivitystudy = 'wavePeriod2', startValueSensitivityStudy = 0.1)
 
 modelWP2.plotBEMTerms()
 modelWP2.plotAeroTerms()
 modelWP2.plotCouplingTerms()
 modelWP2.plotCouplingContribution()
 modelWP2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+modelWP2.RMSmisalignresponse(twoDOF=False, RootRMS= True)
 
-saveFigures(modelFO,saveFiguresLocation)
+saveFigures(modelWP2,saveFiguresLocation)
 
-# Simulate the different load cases
-# model.analyzeCases(display=False, numberOfCores= -2)
+'''Change Wave Height of system 2 from 0 m to 6 m'''
+modelWH2 = runRaftSensitivity(file, variableSensitivitystudy = 'waveHeight2', startValueSensitivityStudy = 0)
 
-# Plot the power spectral densities from the load cases
-# model.plotResponses_extended()
-# model.plotBEMTerms()
-# model.plotAeroTerms()
-# model.plotCouplingTerms()
-# model.plotTowerBaseResponse(include_surface = False)
-# model.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-# model.RMSmisalignresponse(RootRMS= False)
-# model.plotPowerThrust()
-# model.plotCouplingTerms()
-# model.plotCouplingContribution()
-# Visualize the system in its most recently evaluated mean offset position
+modelWH2.plotBEMTerms()
+modelWH2.plotAeroTerms()
+modelWH2.plotCouplingTerms()
+modelWH2.plotCouplingContribution()
+modelWH2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+modelWH2.RMSmisalignresponse(twoDOF=False, RootRMS= True)
+
+saveFigures(modelWH2,saveFiguresLocation)
+
+
 modelFO.plot(hideGrid=False)
 
 toc = time.perf_counter()

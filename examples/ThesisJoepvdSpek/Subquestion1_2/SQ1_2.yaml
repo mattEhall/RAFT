@@ -18,12 +18,16 @@ settings:                   # global Settings
 parametricAnalysis:
 #    parametricChange      : True              # [bool] Evaluate
 #    changeType            : floaterRotation   # [string] set type of parametric change i.e:
-    # misalignment, floaterRotation, windSpeed, waveHeight1, waveHeight2, wavePeriod1, wavePeriod2
+    # misalignment, floaterRotation, windSpeed, windMisalignment, waveHeight1, waveHeight2, wavePeriod1, wavePeriod2
     misalignmentAngle     : 5                # [deg] Misalignment angle to evaluate
     numMisalign           : 35                # [int] Number of misalignment angles from base case to evaluate
 
     rotationAngle         : 5                # [deg] rotation with which to rotate the loads wrt floater orientation
     numRotations          : 24               # [int] Number of rotations
+
+    windMisalignmentAngle : 2                # [deg] Misalignment angle to evaluate
+    numWindMisalign       : 120                # [int] Number of misalignment angles from base case to evaluate
+
 
     windSpeedIncrement    : 0.25                # [m/s] Increment in significant wave height, component 1
     numWSIncrements       : 80                 # [int] Number of increments in wave height, component 1
