@@ -18,54 +18,69 @@ tic = time.perf_counter()
 file = '/Users/joepvanderspek/PycharmProjects/RAFT/examples/ThesisJoepvdSpek/Subquestion1_1/SQ1_1.yaml'
 
 
-'''Change floater Orientation from 0 deg to 120 deg'''
-modelFO = runRaftSensitivity(file, variableSensitivitystudy = 'floaterRotation', startValueSensitivityStudy = 0)
 
-modelFO.plotBEMTerms()
-modelFO.plotAeroTerms()
-modelFO.plotCouplingTerms()
-modelFO.plotCouplingContribution()
-modelFO.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+# '''Change wind angle from -120 to 120'''
+# modelWA = runRaftSensitivity(file, variableSensitivitystudy = 'windMisalignment', startValueSensitivityStudy = -120)
+#
+# modelWA.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+# modelWA.RMSmisalignresponse()
+# modelWA.plotCouplingContribution()
+# modelWA.plotCouplingContribution(diagonal = False)
+#
+# saveFigures(modelWA, saveFiguresLocation, identifier ='sq1_1')
+#
+# '''Change wind speed from 3 to 10.5'''
+# modelWS = runRaftSensitivity(file, variableSensitivitystudy = 'windSpeed', startValueSensitivityStudy = 3)
+#
+# modelWS.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+# modelWS.RMSmisalignresponse()
+# modelWS.plotPowerThrust()
+# modelWS.plotAeroTerms()
+# modelWS.plotCouplingTerms()
+# modelWS.plotCouplingTerms(diagonal=False)
+# modelWS.plotCouplingContribution()
+# modelWS.plotCouplingContribution(diagonal = False)
+#
+# saveFigures(modelWS, saveFiguresLocation, identifier ='sq1_1')
+#
+# '''Change floater Orientation from 0 deg to 120 deg'''
+# modelFO = runRaftSensitivity(file, variableSensitivitystudy = 'floaterRotation', startValueSensitivityStudy = 0)
+#
+# modelFO.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+# modelFO.RMSmisalignresponse()
+# modelFO.plotAeroTerms()
+# modelFO.plotCouplingTerms()
+# modelFO.plotCouplingTerms(diagonal=False)
+# modelFO.plotCouplingContribution()
+# modelFO.plotCouplingContribution(diagonal = False)
+#
+# saveFigures(modelFO,saveFiguresLocation, identifier ='sq1_1')
+#
+# '''Change misalignment angle Wave system 2 from 0 deg to 180 deg'''
+# modelMA1 = runRaftSensitivity(file, variableSensitivitystudy = 'misalignment', startValueSensitivityStudy = 0)
+#
+# modelMA1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
+# modelMA1.RMSmisalignresponse(twoDOF=False, RootRMS= True)
+# modelMA1.plotCouplingTerms()
+# modelMA1.plotCouplingTerms(diagonal=False)
+# modelMA1.plotCouplingContribution()
+# modelMA1.plotCouplingContribution(diagonal = False)
+#
+# saveFigures(modelMA1, saveFiguresLocation, identifier ='sq1_1')
 
-saveFigures(modelFO,saveFiguresLocation)
+'''Change wave period of system 2 from 1 s to 30 seconds'''
+modelWP2 = runRaftSensitivity(file, variableSensitivitystudy = 'wavePeriod2', startValueSensitivityStudy = 1)
 
-'''Change misalignment angle Wave system 2 from 0 deg to 180 deg'''
-modelMA1 = runRaftSensitivity(file, variableSensitivitystudy = 'misalignment', startValueSensitivityStudy = 0)
-
-modelMA1.plotBEMTerms()
-modelMA1.plotAeroTerms()
-modelMA1.plotCouplingTerms()
-modelMA1.plotCouplingContribution()
-modelMA1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-
-saveFigures(modelMA1, saveFiguresLocation)
-
-'''Change wave period of system 2 from 0.1 s to 25 seconds'''
-modelWP2 = runRaftSensitivity(file, variableSensitivitystudy = 'wavePeriod2', startValueSensitivityStudy = 0.1)
-
-modelWP2.plotBEMTerms()
-modelWP2.plotAeroTerms()
-modelWP2.plotCouplingTerms()
-modelWP2.plotCouplingContribution()
 modelWP2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWP2.RMSmisalignresponse(twoDOF=False, RootRMS= True)
+modelWP2.plotCouplingContribution()
+modelWP2.plotCouplingContribution(diagonal = False)
 
-saveFigures(modelWP2,saveFiguresLocation)
-
-'''Change Wave Height of system 2 from 0 m to 6 m'''
-modelWH2 = runRaftSensitivity(file, variableSensitivitystudy = 'waveHeight2', startValueSensitivityStudy = 0)
-
-modelWH2.plotBEMTerms()
-modelWH2.plotAeroTerms()
-modelWH2.plotCouplingTerms()
-modelWH2.plotCouplingContribution()
-modelWH2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-modelWH2.RMSmisalignresponse(twoDOF=False, RootRMS= True)
-
-saveFigures(modelWH2,saveFiguresLocation)
+saveFigures(modelWP2,saveFiguresLocation, identifier ='sq1_1')
 
 
-modelFO.plot(hideGrid=False)
+
+# modelFO.plot(hideGrid=False)
 
 toc = time.perf_counter()
 totaltime = toc - tic

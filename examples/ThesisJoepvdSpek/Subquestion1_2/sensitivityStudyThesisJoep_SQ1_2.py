@@ -25,7 +25,7 @@ modelWS = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'windSpeed', s
 modelWS.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWS.RMSmisalignresponse()
 modelWS.plotPowerThrust()
-saveFigures(modelWS, saveFiguresLocation)
+saveFigures(modelWS, saveFiguresLocation, identifier ='sq1_2')
 
 
 '''Change wind heading from 0 to 120'''
@@ -34,7 +34,7 @@ modelWA = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'windMisalignm
 modelWA.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWA.RMSmisalignresponse()
 modelWA.plotPowerThrust()
-saveFigures(modelWA, saveFiguresLocation)
+saveFigures(modelWA, saveFiguresLocation, identifier ='sq1_2')
 
 
 '''Change HS of Wave system 1 from 0 m (still) to 6 m'''
@@ -42,7 +42,7 @@ modelHS1 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'waveHeight1'
 
 modelHS1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelHS1.RMSmisalignresponse()
-saveFigures(modelHS1, saveFiguresLocation)
+saveFigures(modelHS1, saveFiguresLocation, identifier ='sq1_2')
 
 
 
@@ -51,7 +51,7 @@ modelWP1 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'wavePeriod1'
 
 modelWP1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWP1.RMSmisalignresponse()
-saveFigures(modelWP1, saveFiguresLocation)
+saveFigures(modelWP1, saveFiguresLocation, identifier ='sq1_2')
 
 
 
@@ -60,7 +60,7 @@ modelHS2 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'waveHeight2'
 
 modelHS2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelHS2.RMSmisalignresponse()
-saveFigures(modelHS2, saveFiguresLocation)
+saveFigures(modelHS2, saveFiguresLocation, identifier ='sq1_2')
 
 
 
@@ -69,7 +69,7 @@ modelWP2 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'wavePeriod2'
 
 modelWP2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWP2.RMSmisalignresponse()
-saveFigures(modelWP2, saveFiguresLocation)
+saveFigures(modelWP2, saveFiguresLocation, identifier ='sq1_2')
 
 
 
@@ -79,7 +79,7 @@ modelMA1 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'misalignment
 modelMA1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelMA1.RMSmisalignresponse()
 
-saveFigures(modelMA1, saveFiguresLocation)
+saveFigures(modelMA1, saveFiguresLocation, identifier ='sq1_2')
 
 
 
@@ -87,7 +87,7 @@ saveFigures(modelMA1, saveFiguresLocation)
 modelFO = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'floaterRotation', startValueSensitivityStudy = 0)
 
 modelFO.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-modelFO.RMSmisalignresponse()
+modelFO.RMSmisalignresponse(twoDOF=True)
 
 saveFigures(modelFO, saveFiguresLocation)
 

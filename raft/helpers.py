@@ -697,9 +697,10 @@ def getUniqueCaseHeadings(keys, values):
         numberOfHeadings = 1
     return caseHeadings, headingStep, numberOfHeadings # only have unique values in evaluated list, otherwise possibly issues with np.diff
 
-def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 7, thickness= 0.114):
+def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 10, thickness= 0.083):
     """Function to retrieve Axial stress (sigma_x) around tower base circumference using tower base bending"""
     # angles = np.linspace(0,2*np.pi,dAngles) # Array with angles to calculate for anywhere around tower.
+
     angleMeshFA, TBFAMesh = np.meshgrid(angles, TBFA)
     angleMeshSS, TBSSMesh = np.meshgrid(angles, TBSS)
     # print('TBFA',TBFA)
@@ -712,11 +713,11 @@ def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 
     ANGLESMesh, FREQMesh = np.meshgrid(angles, frequencies)
     return getPSD(sigmaX/10**6), ANGLESMesh, FREQMesh
 
-def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametricAnalysis= False):
+def parametricAnalysisBuilder(design, changeType, startValueSensitivityStudy, parametricAnalysis= False):
 
     if parametricAnalysis:
-        misalignmentAngle = getFromDict(design['parametricAnalysis'], 'misalignmentAngle')
-        numMisalignAngles = getFromDict(design['parametricAnalysis'], 'numMisalign', dtype=int)
+        misalignmentAngle = getFromDict(design['parametricAnalysis'], 'misalignmentAngle', default=0)
+        numMisalignAngles = getFromDict(design['parametricAnalysis'], 'numMisalign', dtype=int, default=0)
         if misalignmentAngle is not None and numMisalignAngles is not None and changeType == 'misalignment':
             design['cases']['data'][0][13] = startValueSensitivityStudy
             for misalign in range(numMisalignAngles):
@@ -724,8 +725,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[13] += misalignmentAngle * (misalign + 1)
                 design['cases']['data'].append(add_design)
 
-        windMisalignmentAngle = getFromDict(design['parametricAnalysis'], 'windMisalignmentAngle')
-        numWindMisalignAngles = getFromDict(design['parametricAnalysis'], 'numWindMisalign', dtype=int)
+        windMisalignmentAngle = getFromDict(design['parametricAnalysis'], 'windMisalignmentAngle', default=0)
+        numWindMisalignAngles = getFromDict(design['parametricAnalysis'], 'numWindMisalign', dtype=int, default=0)
         if windMisalignmentAngle is not None and numWindMisalignAngles is not None and changeType == 'windMisalignment':
             design['cases']['data'][0][1] = startValueSensitivityStudy
             for angle in range(numWindMisalignAngles):
@@ -733,8 +734,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[1] += windMisalignmentAngle * (angle + 1)
                 design['cases']['data'].append(add_design)
 
-        rotationAngle = getFromDict(design['parametricAnalysis'], 'rotationAngle')
-        numRotations = getFromDict(design['parametricAnalysis'], 'numRotations', dtype=int)
+        rotationAngle = getFromDict(design['parametricAnalysis'], 'rotationAngle', default=0)
+        numRotations = getFromDict(design['parametricAnalysis'], 'numRotations', dtype=int, default=0)
         if rotationAngle is not None and numRotations is not None and changeType == 'floaterRotation':
             for misalign in range(numRotations):
                 add_design = design['cases']['data'][0].copy()
@@ -743,8 +744,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[13] += rotationAngle * (misalign + 1)
                 design['cases']['data'].append(add_design)
 
-        windSpeedIncrement = getFromDict(design['parametricAnalysis'], 'windSpeedIncrement')
-        numWSIncrements = getFromDict(design['parametricAnalysis'], 'numWSIncrements', dtype=int)
+        windSpeedIncrement = getFromDict(design['parametricAnalysis'], 'windSpeedIncrement', default=0)
+        numWSIncrements = getFromDict(design['parametricAnalysis'], 'numWSIncrements', dtype=int, default=0)
         if windSpeedIncrement is not None and numWSIncrements is not None and changeType == 'windSpeed':
             design['cases']['data'][0][0] = startValueSensitivityStudy
             for numIncr in range(numWSIncrements):
@@ -752,8 +753,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[0] += windSpeedIncrement * (numIncr + 1)
                 design['cases']['data'].append(add_design)
 
-        waveHeightIncrement1 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement1')
-        numWHincrements1 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int)
+        waveHeightIncrement1 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement1', default=0)
+        numWHincrements1 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int, default=0)
         if waveHeightIncrement1 is not None and numWHincrements1 is not None and changeType == 'waveHeight1':
             design['cases']['data'][0][7] = startValueSensitivityStudy
             for numIncr in range(numWHincrements1):
@@ -761,8 +762,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[7] += waveHeightIncrement1 * (numIncr + 1)
                 design['cases']['data'].append(add_design)
 
-        waveHeightIncrement2 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement2')
-        numWHincrements2 = getFromDict(design['parametricAnalysis'], 'numWHIncrements1', dtype=int)
+        waveHeightIncrement2 = getFromDict(design['parametricAnalysis'], 'waveHeightIncrement2', default=0)
+        numWHincrements2 = getFromDict(design['parametricAnalysis'], 'numWHIncrements2', dtype=int, default=0)
         if waveHeightIncrement2 is not None and numWHincrements2 is not None and changeType == 'waveHeight2':
             design['cases']['data'][0][12] = startValueSensitivityStudy
             for numIncr in range(numWHincrements2):
@@ -770,8 +771,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[12] += waveHeightIncrement2 * (numIncr + 1)
                 design['cases']['data'].append(add_design)
 
-        wavePeriodIncrement1 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement1')
-        numWPincrements1 = getFromDict(design['parametricAnalysis'], 'numWPIncrements1', dtype=int)
+        wavePeriodIncrement1 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement1', default=0)
+        numWPincrements1 = getFromDict(design['parametricAnalysis'], 'numWPIncrements1', dtype=int, default=0)
         if wavePeriodIncrement1 is not None and numWPincrements1 is not None and changeType == 'wavePeriod1':
             design['cases']['data'][0][6] = startValueSensitivityStudy
             for numIncr in range(numWPincrements1):
@@ -779,8 +780,8 @@ def parametricAnalysis(design, changeType, startValueSensitivityStudy, parametri
                 add_design[6] += wavePeriodIncrement1 * (numIncr + 1)
                 design['cases']['data'].append(add_design)
 
-        wavePeriodIncrement2 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement2')
-        numWPincrements2 = getFromDict(design['parametricAnalysis'], 'numWPIncrements2', dtype=int)
+        wavePeriodIncrement2 = getFromDict(design['parametricAnalysis'], 'wavePeriodIncrement2', default=0)
+        numWPincrements2 = getFromDict(design['parametricAnalysis'], 'numWPIncrements2', dtype=int, default=0)
         if wavePeriodIncrement2 is not None and numWPincrements2 is not None and changeType == 'wavePeriod2':
             design['cases']['data'][0][11] = startValueSensitivityStudy
             for numIncr in range(numWPincrements2):
@@ -832,6 +833,11 @@ def retrieveAxisParAnalysis(iCase, cases, changeType, variableXaxis, parametricA
         variableXaxis.append(cases['wave_period2'])
         string_x_axis = 'Wave Period system 2 [s]'
         title_string = f'WS2 $T{{p}}={variableXaxis[-1]:10.2f}$ [s]'
+    else:
+        variableXaxis.append(iCase)
+        string_x_axis = 'Case number'
+        title_string = f'Base Case {iCase+1}'
+
     return variableXaxis, string_x_axis, title_string
 
 def get_figsize(width, fraction=1, subplots=(1, 1)):
@@ -873,6 +879,19 @@ def get_figsize(width, fraction=1, subplots=(1, 1)):
 
     return (fig_width_in, fig_height_in)
 
+def bmatrix(a):
+    """Returns a LaTeX bmatrix
+
+    :a: numpy array
+    :returns: LaTeX bmatrix as a string
+    """
+    if len(a.shape) > 2:
+        raise ValueError('bmatrix can at most display two dimensions')
+    lines = str(a).replace('[', '').replace(']', '').splitlines()
+    rv = [r'\begin{bmatrix}']
+    rv += ['  ' + ' & '.join(l.split()) + r'\\' for l in lines]
+    rv +=  [r'\end{bmatrix}']
+    return '\n'.join(rv)
 
 if __name__ == '__main__':
     

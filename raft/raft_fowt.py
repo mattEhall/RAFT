@@ -789,21 +789,23 @@ class FOWT():
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
 
-    def calcTBBendingMom(self, Xi, Xi0, results, iCase, direction):
+    def calcTBBendingMom(self, case, Xi, Xi0, results, iCase, direction):
         if direction in ['FA', 'Fore-Aft', 'foreaft']:
             var1 = 0
             var2 = 4
             direction = ''
             multiplyfordirection = 1
             couplingterm2 = 3
-            I_RNA = self.IrRNA
+            I_RNA = self.IrRNA*np.cos(np.deg2rad(case['wind_heading']))+self.IxRNA*np.sin(np.deg2rad(case['wind_heading']))
         elif direction in ['SS','Side-to-Side','sideside']:
             var1 = 1
             var2 = 3
             direction = 'SS'
             multiplyfordirection = -1
             couplingterm2 = 4
-            I_RNA = self.IxRNA
+            I_RNA = self.IxRNA*np.cos(np.deg2rad(case['wind_heading']))+self.IrRNA*np.sin(np.deg2rad(case['wind_heading']))
+
+
         m_turbine   = self.mtower + self.mRNA                                       # turbine total mass
         zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine # turbine center of gravity
         zBase = self.memberList[-1].rA[2]                                           # tower base elevation [m]
@@ -886,8 +888,8 @@ class FOWT():
         results['AxRNA_PSD'][iCase,:] = getPSD(XiHub*self.w**2)
         
         # tower base bending moment
-        self.calcTBBendingMom(Xi, Xi0, results,iCase,'FA')
-        self.calcTBBendingMom(Xi, Xi0, results,iCase,'SS')
+        self.calcTBBendingMom(case, Xi, Xi0, results,iCase,'FA')
+        self.calcTBBendingMom(case, Xi, Xi0, results,iCase,'SS')
 
         
         # wave PSD for reference
