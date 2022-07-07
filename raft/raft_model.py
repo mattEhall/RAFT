@@ -587,7 +587,7 @@ class Model():
         self.results['eigen']['frequencies'] = fns
         self.results['eigen']['modes'] = modes
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, F_BEM_plot=False):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, F_BEM_plot=True):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -649,12 +649,12 @@ class Model():
             CB4 = axF[0, 1].contourf(freqMesh, headingMesh, np.abs(fowt.F_BEM_ALL[:38, 3, :]))
             CB5 = axF[1, 1].contourf(freqMesh, headingMesh, np.abs(fowt.F_BEM_ALL[:38, 4, :]))
             CB6 = axF[2, 1].contourf(freqMesh, headingMesh, np.abs(fowt.F_BEM_ALL[:38, 5, :]))
-            axF[0, 0].set_title('Surge Direction')
-            axF[1, 0].set_title('Sway Direction')
-            axF[2, 0].set_title('Heave Direction')
-            axF[0, 1].set_title('Roll Direction')
-            axF[1, 1].set_title('Pitch Direction')
-            axF[2, 1].set_title('Yaw Direction')
+            axF[0, 0].set_title('Surge Wave Excitation')
+            axF[1, 0].set_title('Sway Wave Excitation')
+            axF[2, 0].set_title('Heave Wave Excitation')
+            axF[0, 1].set_title('Roll Wave Excitation')
+            axF[1, 1].set_title('Pitch Wave Excitation')
+            axF[2, 1].set_title('Yaw Wave Excitation')
             axF[2, 0].set_xlabel('Frequency [Hz]')
             axF[2, 1].set_xlabel('Frequency [Hz]')
             axF[0, 0].set_ylabel('Wave Heading [deg]')
@@ -674,12 +674,12 @@ class Model():
             cbar5 = figF.colorbar(CB5, ax=axF[1, 1])
             cbar6 = figF.colorbar(CB6, ax=axF[2, 1])
 
-            cbar1.ax.set_ylabel('[N]')
-            cbar2.ax.set_ylabel('[N]')
-            cbar3.ax.set_ylabel('[N]')
-            cbar4.ax.set_ylabel('[Nm]')
-            cbar5.ax.set_ylabel('[Nm]')
-            cbar6.ax.set_ylabel('[Nm]')
+            cbar1.ax.set_ylabel('Force [N]')
+            cbar2.ax.set_ylabel('Force [N]')
+            cbar3.ax.set_ylabel('Force [N]')
+            cbar4.ax.set_ylabel('Moment [Nm]')
+            cbar5.ax.set_ylabel('Moment [Nm]')
+            cbar6.ax.set_ylabel('Moment [Nm]')
 
 
 
@@ -689,8 +689,8 @@ class Model():
             else:
                 hs = case['wave_height']
                 tp = case['wave_period']
-            figF.suptitle(f'Base Case, wave excitation for various wave headings ($H_s$ = {hs} [m], $T_p$ = {tp} [s])')
-            figF.savefig(f'F_BEM_hs_{hs}_m_tp_{tp}.pdf')
+            figF.suptitle(f'Real part of wave excitation for various wave headings ($H_s$ = {hs} [m], $T_p$ = {tp} [s])')
+            figF.savefig(f'F_BEM_hs_{hs}_m_tp_{tp}_sec.pdf')
             # figF.savefig(f'F_BEM_hs_{hs}_m_tp_{tp}_sec.pdf')
             # for col in range(2):
             #     for row in range(3):
@@ -793,6 +793,39 @@ class Model():
             ax[1].set_ylabel("response magnitude (deg)")
             ax[2].set_ylabel("wave amplitude (m)")
             ax[2].set_xlabel("frequency (rad/s)")
+
+
+
+        if F_BEM_plot:
+            i = 0
+            fig, ax = plt.subplots(3,2, sharex=True, figsize=get_figsize(self.latex_width, subplots=(3,2)))
+            for m in [0, 1]:
+                for n in [0,1,2]:
+                    ax[n,m].plot(self.w /TwoPi, fowt.F_aero[i, :], label='Aerodynamic excitation')
+                    ax[n,m].plot(self.w /TwoPi, fowt.F_BEM[i, :], label='Potential flow excitation')
+                    ax[n,m].plot(self.w /TwoPi, fowt.F_hydro_iner[i, :], label='Hydro inertia excitation')
+                    ax[n,m].plot(self.w /TwoPi, fowt.F_hydro_drag[i, :], label='Hydrodynamic drag excitation')
+                    i += 1
+
+            ax[0, 0].set_title('Surge Direction')
+            ax[1, 0].set_title('Sway Direction')
+            ax[2, 0].set_title('Heave Direction')
+            ax[0, 1].set_title('Roll Direction')
+            ax[1, 1].set_title('Pitch Direction')
+            ax[2, 1].set_title('Yaw Direction')
+
+            ax[0, 0].set_ylabel('Force [N]')
+            ax[1, 0].set_ylabel('Force [N]')
+            ax[2, 0].set_ylabel('Force [N]')
+            ax[0, 1].set_ylabel('Moment [Nm]')
+            ax[1, 1].set_ylabel('Moment [Nm]')
+            ax[2, 1].set_ylabel('Moment [Nm]')
+
+            ax[2, 0].set_xlabel('Frequency [Hz]')
+            ax[2, 1].set_xlabel('Frequency [Hz]')
+
+            ax[2,1].legend()
+            fig.savefig('F_all.pdf')
 
         self.Xi = Xi
 
@@ -920,6 +953,8 @@ class Model():
         nCases = len(metrics['surge_avg'])
 
         for iCase in range(nCases):
+            case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+
             ax['surge'].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
             ax['sway'].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
             ax['heave'].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
@@ -936,8 +971,9 @@ class Model():
             if not np.all(metrics['wave_PSD2'][iCase, :] == 0):
                 ax['Wave2'].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD2'][iCase, :],
                                  label=f'ws 2 case {iCase + 1}')  # wave spectrum
+            case_wh = case['wave_heading2']
             ax['Wind'].plot(self.w / TwoPi, TwoPi * metrics['wind_PSD'][iCase, :],
-                            label=f'case {iCase + 1}')  # wind spectrum
+                            label=f'Misalignment swell wave = {case_wh} [deg]')  # wind spectrum
             # need a variable number of subplots for the mooring lines
             # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
@@ -958,8 +994,8 @@ class Model():
         # ax[1].set_ylim([0.0, 15])
         # ax[2].set_ylim([0.0, 4])
         # ax[-1].set_xlim([0.03, 0.15])
-        ax['yaw'].set_xlabel('frequency (Hz)')
-        ax['Wind'].set_xlabel('frequency (Hz)')
+        ax['yaw'].set_xlabel('frequency [Hz]')
+        ax['Wind'].set_xlabel('frequency [Hz]')
 
         # if nCases > 1:
         ax['Wind'].legend()
@@ -991,7 +1027,7 @@ class Model():
                 ax.plot_surface(np.rad2deg(ANGLESMesh), FREQMesh / TwoPi, TwoPi * sigmaX,
                                 cmap=plt.cm.jet)  # , rstride=1)
                 ax.set_xlabel('angle around TB (deg)')
-                ax.set_ylabel('frequency (Hz)')
+                ax.set_ylabel('frequency [Hz]')
                 ax.set_zlabel('sigma_x (MPa^2/Hz)')
                 ax.set_xbound(0, 360)
                 ax.set_ybound(0, 0.4)

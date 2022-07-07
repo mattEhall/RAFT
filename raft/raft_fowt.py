@@ -484,6 +484,8 @@ class FOWT():
             for iw in range(self.nw):
                 #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
                 self.F_aero[:,iw] = translateForce3to6DOF(np.matmul(rotateToFloaterOrientation, np.array([f_aero[iw], 0, 0])), rHub)
+            # print(f'rotate matrix = {rotateToFloaterOrientation}')
+            # print(f'f_aero multiply = {np.matmul(rotateToFloaterOrientation, np.array([f_aero[iw], 0, 0]))}')
 
 
     def calcHydroConstants(self, case):
