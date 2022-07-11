@@ -557,9 +557,15 @@ class FOWT():
             # ----- calculate potential-flow wave excitation force -----
             # print('Headings stored', self.headsStored)
             # print('Beta = ', self.beta)
-            caseIndex = np.where(self.headsStored == self.beta)[0]
-
-            X_BEM_temp = np.reshape(self.X_BEM[caseIndex, :, :], (6, len(self.zeta)))
+            # print(self.headsStored.size)
+            # print(self.X_BEM.size)
+            if self.headsStored.size == 1:
+                caseIndex = np.where(self.headsStored == self.beta)[0]
+                X_BEM_temp = np.reshape(self.X_BEM[caseIndex, :, :], (6, len(self.zeta)))
+            else:
+                interp_axis_object = interp1d(self.headsStored, self.X_BEM, axis = 0)
+                X_BEM_temp_interpolated = interp_axis_object(self.beta)
+                X_BEM_temp = np.reshape(X_BEM_temp_interpolated, (6, len(self.zeta)))
 
             self.F_BEM += X_BEM_temp * self.zeta    # wave excitation force (will be zero if HAMS wasn't run)
             self.F_BEM_ALL = self.X_BEM *self.zeta

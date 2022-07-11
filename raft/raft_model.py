@@ -61,7 +61,7 @@ class Model():
 
             self.design = design  # save design dictionary for possible later use/reference
             self.changeType = ""
-        print(self.design['cases'])
+        # print(self.design['cases'])
         # parse settings
         if not 'settings' in design:  # if settings field not in input data
             design['settings'] = {}  # make an empty one to avoid errors
@@ -390,6 +390,8 @@ class Model():
                 print(
                     f"blade pitch (deg)  {metrics['bPitch_avg'][iCase] :10.2e}  {metrics['bPitch_std'][iCase] :10.2e} ")
                 print(f"rotor power        {metrics['power_avg'][iCase] :10.2e} ")
+                print(f"rotor thrust       {metrics['thrust_avg'][iCase] :10.2e} ")
+
                 for i in range(nLine):
                     j = i + nLine
                     # print(f"line {i} tension A  {metrics['Tmoor_avg'][iCase,i]:10.2e}  {metrics['Tmoor_std'][iCase,i]:10.2e}  {metrics['Tmoor_max'][iCase,i]:10.2e}")
@@ -587,7 +589,7 @@ class Model():
         self.results['eigen']['frequencies'] = fns
         self.results['eigen']['modes'] = modes
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, F_BEM_plot=True):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, F_BEM_plot=False):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -731,8 +733,8 @@ class Model():
                 Z[:, :, ii] = -self.w[ii] ** 2 * M_tot[:, :, ii] + 1j * self.w[ii] * B_tot[:, :, ii] + C_tot[:, :, ii]
 
                 # solve response (complex amplitude)
-                Xi[:, ii] = np.matmul(np.linalg.inv(Z[:, :, ii]), F_tot[:, ii])
-
+                # Xi[:, ii] = np.matmul(np.linalg.inv(Z[:, :, ii]), F_tot[:, ii])
+                Xi[:, ii] = np.linalg.solve(Z[:, :, ii], F_tot[:, ii])
             if conv_plot:
                 # Convergence Plotting
                 # plots of surge response at each iteration for observing convergence
@@ -1006,7 +1008,7 @@ class Model():
         fig.suptitle('RAFT power spectral densities')
         fig.tight_layout()
 
-    def plotTowerBaseResponse(self, plot='polar', plot_eq_stress_angles=False, include_surface=False):
+    def plotTowerBaseResponse(self, plot='polar', plot_eq_stress_angles=False, include_surface=False, weighted_sum_cases = False):
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
 
@@ -1091,6 +1093,41 @@ class Model():
             ax.legend()
             ax.grid()
 
+        case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][0]))
+        if weighted_sum_cases and case['FLS_weight_factor'] is not None:
+            print('Calculating weighted equivalent stress for all cases now...')
+            total_weight_factor = 0
+            for iCase in range(nCases):
+                case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+                total_weight_factor += float(case['FLS_weight_factor'])
+            print(total_weight_factor)
+            weightedEquivalentStressAllLoadCases = np.zeros(self.numAngles)
+            counter_term = np.zeros(self.numAngles)
+
+            for iAngles in range(self.numAngles):
+                for iCase in range(nCases):
+
+                    case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+
+                    equivalent_stress_angle = metrics['DEL_angles'][iCase,iAngles]
+                    counter_term[iAngles] += equivalent_stress_angle**6*float(case['FLS_weight_factor'])
+
+                weightedEquivalentStressAllLoadCases[iAngles] = ((counter_term[iAngles])/total_weight_factor)**(1/6)
+
+            plt.figure(figsize=get_figsize(self.latex_width))
+            ax = plt.subplot(111, polar=True)
+            ax.grid(True)
+            ax.set_theta_direction(-1)
+            ax.set_theta_offset(np.pi / 2.0)
+            ax.plot(self.anglesArray, weightedEquivalentStressAllLoadCases, label=f'All Cases')
+            ax.set_title('Fatigue Damage Equivalant Stress Around TB [MPa]')
+            ax.set_xlabel('Location around TB circumference (deg)')
+        elif case['FLS_weight_factor'] is None:
+            print('case[FLS_weight_factor] not defined, skipping this step')
+
+
+
+
         # TODO: Seperate calculation of FDEL and Plotting in seperate methods, they can then be added to  results print.
 
         # fig = plt.figure(figsize=(8, 8))
@@ -1169,8 +1206,8 @@ class Model():
                                                                    self.design['parametricAnalysis'])
         fig, ax1 = plt.subplots(figsize=get_figsize(self.latex_width))
         ax2 = ax1.twinx()
-        ax1.plot(variableXaxis, metrics['power_avg'][:] / 10 ** 6, '-',label= 'Power')
-        ax2.plot(variableXaxis, metrics['thrust_avg'][:] / 10 ** 6, '--', label = 'Thrust')
+        ax1.plot(variableXaxis, metrics['power_avg'][:] / (10 ** 6), '-',label= 'Power')
+        ax2.plot(variableXaxis, metrics['thrust_avg'][:] / (10 ** 6), '--', label = 'Thrust')
         ax1.set_xlabel(string_x_axis)
         ax1.set_ylabel('Generated Power [MW]', color='g')
         ax2.set_ylabel('Thrust on rotor [MW]', color='b')

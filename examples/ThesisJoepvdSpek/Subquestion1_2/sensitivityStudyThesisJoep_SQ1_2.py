@@ -25,6 +25,7 @@ modelWS = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'windSpeed', s
 modelWS.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWS.RMSmisalignresponse()
 modelWS.plotPowerThrust()
+modelWS.plotAeroTerms()
 saveFigures(modelWS, saveFiguresLocation, identifier ='sq1_2')
 
 
@@ -33,36 +34,7 @@ modelWA = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'windMisalignm
 
 modelWA.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWA.RMSmisalignresponse()
-modelWA.plotPowerThrust()
 saveFigures(modelWA, saveFiguresLocation, identifier ='sq1_2')
-
-
-'''Change HS of Wave system 1 from 0 m (still) to 6 m'''
-modelHS1 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'waveHeight1', startValueSensitivityStudy = 0)
-
-modelHS1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-modelHS1.RMSmisalignresponse()
-saveFigures(modelHS1, saveFiguresLocation, identifier ='sq1_2')
-
-
-
-'''Change Tp of Wave system 1 from 0.1 s to 15 s'''
-modelWP1 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'wavePeriod1', startValueSensitivityStudy = 0.1)
-
-modelWP1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-modelWP1.RMSmisalignresponse()
-saveFigures(modelWP1, saveFiguresLocation, identifier ='sq1_2')
-
-
-
-'''Change HS of Wave system 2 from 0 m (still) to 6 m'''
-modelHS2 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'waveHeight2', startValueSensitivityStudy = 0)
-
-modelHS2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-modelHS2.RMSmisalignresponse()
-saveFigures(modelHS2, saveFiguresLocation, identifier ='sq1_2')
-
-
 
 '''Change Tp of Wave system 2 from 0.1 s to 15 s'''
 modelWP2 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'wavePeriod2', startValueSensitivityStudy = 0.1)
@@ -71,25 +43,23 @@ modelWP2.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelWP2.RMSmisalignresponse()
 saveFigures(modelWP2, saveFiguresLocation, identifier ='sq1_2')
 
-
-
 '''Change misalignment angle Wave system 2 from 0 deg to 180 deg'''
 modelMA1 = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'misalignment', startValueSensitivityStudy = 0)
 
 modelMA1.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
 modelMA1.RMSmisalignresponse()
+modelMA1.plotResponses_extended()
 
 saveFigures(modelMA1, saveFiguresLocation, identifier ='sq1_2')
-
-
 
 '''Change floater Orientation from 0 deg to 120 deg'''
 modelFO = runRaftSensitivity(fileyaml, variableSensitivitystudy = 'floaterRotation', startValueSensitivityStudy = 0)
 
 modelFO.plotTowerBaseResponse(plot = 'polar', plot_eq_stress_angles=True)
-modelFO.RMSmisalignresponse(twoDOF=True)
+modelFO.RMSmisalignresponse(twoDOF=True, RootRMS=False)
+modelFO.plotResponses_extended()
 
-saveFigures(modelFO, saveFiguresLocation)
+saveFigures(modelFO, saveFiguresLocation, identifier ='sq1_2')
 
 toc = time.perf_counter()
 totaltime = toc - tic
