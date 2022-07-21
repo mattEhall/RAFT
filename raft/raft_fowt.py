@@ -129,8 +129,8 @@ class FOWT():
         self.X_BEM = np.zeros([73,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         self.storeZeta = np.zeros([2, self.nw])
-        self.F_BEM_ALL = np.zeros([numberOfHeadings, 6, self.nw], dtype=complex)
-
+        self.F_BEM_ALL = np.zeros([73, 6, self.nw], dtype=complex)
+        # TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics.
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
         Also adds some dynamic parameters that are constant, e.g. BEM coefficients and steady thrust loads.'''
@@ -804,32 +804,36 @@ class FOWT():
             direction = ''
             multiplyfordirection = 1
             couplingterm2 = 3
-            I_RNA = self.IrRNA*np.cos(np.deg2rad(case['wind_heading']))+self.IxRNA*np.sin(np.deg2rad(case['wind_heading']))
-        elif direction in ['SS','Side-to-Side','sideside']:
+            I_RNA = self.IrRNA * np.cos(np.deg2rad(case['wind_heading'])) + self.IxRNA * np.sin(
+                np.deg2rad(case['wind_heading']))
+        elif direction in ['SS', 'Side-to-Side', 'sideside']:
             var1 = 1
             var2 = 3
             direction = 'SS'
             multiplyfordirection = -1
             couplingterm2 = 4
-            I_RNA = self.IxRNA*np.cos(np.deg2rad(case['wind_heading']))+self.IrRNA*np.sin(np.deg2rad(case['wind_heading']))
+            I_RNA = self.IxRNA * np.cos(np.deg2rad(case['wind_heading'])) + self.IrRNA * np.sin(
+                np.deg2rad(case['wind_heading']))
 
-
-        m_turbine   = self.mtower + self.mRNA                                       # turbine total mass
-        zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine # turbine center of gravity
-        zBase = self.memberList[-1].rA[2]                                           # tower base elevation [m]
-        hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
-        aCG_turbine = -self.w**2 *(multiplyfordirection*Xi[var1,:] + zCG_turbine*Xi[var2,:] )                 # fore-aft acceleration of turbine CG
+        m_turbine = self.mtower + self.mRNA  # turbine total mass
+        zCG_turbine = (self.rCG_tow[2] * self.mtower + self.hHub * self.mRNA) / m_turbine  # turbine center of gravity
+        zBase = self.memberList[-1].rA[2]  # tower base elevation [m]
+        hArm = zCG_turbine - zBase  # vertical distance from tower base to turbine CG [m]
+        aCG_turbine = -self.w ** 2 * (multiplyfordirection * Xi[var1, :] + zCG_turbine * Xi[var2,
+                                                                                         :])  # fore-aft acceleration of turbine CG
         # turbine pitch moment of inertia about CG [kg-m^2]
-        ICG_turbine = (translateMatrix6to6DOF(self.memberList[-1].M_struc, [0,0,-zCG_turbine])[var2,var2]     # tower MOI about turbine CG
-                       + self.mRNA*(self.hHub-zCG_turbine)**2 + I_RNA   )                          # RNA MOI with parallel axis theorem
+        ICG_turbine = (translateMatrix6to6DOF(self.memberList[-1].M_struc, [0, 0, -zCG_turbine])[
+                           var2, var2]  # tower MOI about turbine CG
+                       + self.mRNA * (self.hHub - zCG_turbine) ** 2 + I_RNA)  # RNA MOI with parallel axis theorem
         # moment components and summation (all complex amplitudes)
-        M_I1     = -m_turbine*aCG_turbine*hArm
-        M_I2     =    - ICG_turbine*(-self.w**2 *Xi[var2,:] ) # tower base inertial reaction moment
-        M_w      = m_turbine*self.g * hArm*Xi[var2]                                    # tower base weight moment
-        M_F_aero = multiplyfordirection * self.F_aero[var1,:]*(self.hHub - zBase)                   # tower base moment from turbulent wind excitation
-        M_X_aero_A1 = (-self.w**2 *self.A_aero[var1,var1,:])*(self.hHub - zBase)**2 *Xi[var2,:]
-        M_X_aero_A2 = -(-self.w**2 *self.A_aero[1,0,:])*(self.hHub - zBase)**2 *Xi[couplingterm2,:]
-        M_X_aero_B1 = -(1j * self.w * self.B_aero[var1,var1,:]) * (self.hHub - zBase) ** 2 * Xi[var2, :]
+        M_I1 = -m_turbine * aCG_turbine * hArm
+        M_I2 = - ICG_turbine * (-self.w ** 2 * Xi[var2, :])  # tower base inertial reaction moment
+        M_w = m_turbine * self.g * hArm * Xi[var2]  # tower base weight moment
+        M_F_aero = multiplyfordirection * self.F_aero[var1, :] * (
+                    self.hHub - zBase)  # tower base moment from turbulent wind excitation
+        M_X_aero_A1 = (-self.w ** 2 * self.A_aero[var1, var1, :]) * (self.hHub - zBase) ** 2 * Xi[var2, :]
+        M_X_aero_A2 = -(-self.w ** 2 * self.A_aero[1, 0, :]) * (self.hHub - zBase) ** 2 * Xi[couplingterm2, :]
+        M_X_aero_B1 = -(1j * self.w * self.B_aero[var1, var1, :]) * (self.hHub - zBase) ** 2 * Xi[var2, :]
         M_X_aero_B2 = (1j * self.w * self.B_aero[1, 0, :]) * (self.hHub - zBase) ** 2 * Xi[couplingterm2, :]
 
         M_X_aero = M_X_aero_A1 + M_X_aero_A2 + M_X_aero_B1 + M_X_aero_B2
@@ -841,15 +845,16 @@ class FOWT():
         # print(f'M_X_aero B1  {direction}= {M_X_aero_B1[index]}')
         # print(f'M_X_aero B2  {direction}= {M_X_aero_B2[index]}')
         # print('--------------------------------------')
-        dynamic_moment = M_I1 + M_I2 + M_w + M_X_aero + M_F_aero                        # total tower base fore-aft bending moment [N-m]
-
+        dynamic_moment = M_I1 + M_I2 + M_w + M_X_aero + M_F_aero  # total tower base fore-aft bending moment [N-m]
 
         dynamic_moment_RMS = getRMS(dynamic_moment, self.dw)
         # fill in metrics
-        results[f'Mbase{direction}_avg'][iCase] = m_turbine*self.g * hArm*np.sin(Xi0[var2]) + transformForce(self.F_aero0, offset=[0,0,-hArm])[var2] # mean moment from weight and thrust
+        results[f'Mbase{direction}_avg'][iCase] = m_turbine * self.g * hArm * np.sin(Xi0[var2]) + \
+                                                  transformForce(self.F_aero0, offset=[0, 0, -hArm])[
+                                                      var2]  # mean moment from weight and thrust
         results[f'Mbase{direction}_std'][iCase] = dynamic_moment_RMS
-        results[f'Mbase{direction}_PSD'][iCase,:] = getPSD(dynamic_moment)
-        results[f'Mbase{direction}_sig'][iCase,:]= dynamic_moment
+        results[f'Mbase{direction}_PSD'][iCase, :] = getPSD(dynamic_moment)
+        results[f'Mbase{direction}_sig'][iCase, :] = dynamic_moment
         #results['Mbase_max'][iCase]
         #results['Mbase_DEL'][iCase]
 

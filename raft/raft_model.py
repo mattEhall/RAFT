@@ -27,6 +27,7 @@ from tqdm import tqdm
 import moorpy as mp
 import raft.raft_fowt as fowt
 from raft.helpers import *
+import gc
 
 # import F6T1RNA as structural    # import turbine structural model functions
 
@@ -299,45 +300,58 @@ class Model():
 
             # (could solve mooring and offsets a second time, but likely overkill)
 
-            # solve system dynamics
-            _, M_tot, B_tot, C_tot = self.solveDynamics(case)
-
             # ------------------------------------------------------------------------
-            # Xi0_store = fowt.Xi0
-            Xi_store = self.Xi[0:6, :]
-            Mooring_C = self.J_moor
-            Mooring_T = self.T_moor
 
-            return self.fowtList, Xi_store, Mooring_C, Mooring_T, M_tot, B_tot, C_tot, fowt.A_aero, fowt.B_aero
+            if nCases > 100:
+                # solve system dynamics
+                self.solveDynamics(case)
 
-        res = Parallel(n_jobs=numberOfCores)(delayed(evaluateCases)(iCase) for iCase in tqdm(range(nCases)))
+                gc.collect()
+                return self.Xi[0:6, :], fowt.Xi0
+            else:
+                # solve system dynamics
+                _, M_tot, B_tot, C_tot = self.solveDynamics(case)
+                return self.fowtList, self.Xi[0:6,:], fowt.Xi0, self.J_moor, self.T_moor, M_tot, B_tot, C_tot, fowt.A_aero, fowt.B_aero
+
+        print('Starting calculation of the load cases, if there are more then 500 cases, the complete fowt-class is not stored to save memory.')
+        print('Therefore, some plot functions will return empty.')
+        res = Parallel(n_jobs=numberOfCores, timeout=99999)(delayed(evaluateCases)(iCase) for iCase in tqdm(range(nCases)))
         print('Calculation of cases finish, start storing the results and post processing now.')
 
-        fowtList = [item[0] for item in res]
-        self.Xi_store = [item[1] for item in res]
-        Mooring_C = [item[2] for item in res]
-        Mooring_T = [item[3] for item in res]
-        self.M_tot_store = [item[4] for item in res]
-        self.B_tot_store = [item[5] for item in res]
-        self.C_tot_store = [item[6] for item in res]
-        self.fowt_A_aero_stored = [item[7] for item in res]
-        self.fowt_B_aero_stored = [item[8] for item in res]
+        if nCases > 100:
+            print('More than 50 cases')
+            Xi_store = [item[0] for item in res]
+            Xi0_store = [item[1] for item in res]
+
+        else:
+            fowtList = [item[0] for item in res]
+            Xi_store = [item[1] for item in res]
+            Xi0_store = [item[2] for item in res]
+            Mooring_C = [item[3] for item in res]
+            Mooring_T = [item[4] for item in res]
+            self.M_tot_store = [item[5] for item in res]
+            self.B_tot_store = [item[6] for item in res]
+            self.C_tot_store = [item[7] for item in res]
+            self.fowt_A_aero_stored = [item[8] for item in res]
+            self.fowt_B_aero_stored = [item[9] for item in res]
 
         # results_store = [item[4] for item in res]
 
         for iCase in range(nCases):
-            # self.results['case_metrics'] = results_store[iCase]
-            # print(self.results['case_metrics'])
-            self.fowtList = fowtList[iCase]
-            self.Xi = self.Xi_store[iCase]
-            self.T_moor = Mooring_T[iCase]
-            self.C_moor = Mooring_C[iCase]
+            self.Xi = Xi_store[iCase]
+
+            if nCases <= 100:
+                self.T_moor = Mooring_T[iCase]
+                self.C_moor = Mooring_C[iCase]
+                self.fowtList = fowtList[iCase]
+
             # form dictionary of case parameters
             case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
-            for fowt in self.fowtList:
-                # print('RMS value pitch and roll', (fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
-                fowt.calcTurbineConstants(case, ptfm_pitch=(fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
-                # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+            if nCases > 100:
+                for fowt in self.fowtList:
+                    fowt.Xi0 = Xi0_store[iCase]
+                    fowt.calcTurbineConstants(case, ptfm_pitch=(fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
+                    # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
 
             # ------------------------------------------------------------------------
             # process outputs that are specific to the floating unit
@@ -366,29 +380,17 @@ class Model():
                 # print statistics table
                 print(f"-------------------- Case {iCase + 1} Statistics --------------------")
                 print("Response channel     Average     RMS         Maximum")
-                print(
-                    f"surge (m)          {metrics['surge_avg'][iCase] :10.2e}  {metrics['surge_std'][iCase] :10.2e}  {metrics['surge_max'][iCase] :10.2e}")
-                print(
-                    f"sway (m)           {metrics['sway_avg'][iCase] :10.2e}  {metrics['sway_std'][iCase] :10.2e}  {metrics['sway_max'][iCase] :10.2e}")
-                print(
-                    f"heave (m)          {metrics['heave_avg'][iCase] :10.2e}  {metrics['heave_std'][iCase] :10.2e}  {metrics['heave_max'][iCase] :10.2e}")
-                print(
-                    f"roll (deg)         {metrics['roll_avg'][iCase] :10.2e}  {metrics['roll_std'][iCase] :10.2e}  {metrics['roll_max'][iCase] :10.2e}")
-                print(
-                    f"pitch (deg)        {metrics['pitch_avg'][iCase] :10.2e}  {metrics['pitch_std'][iCase] :10.2e}  {metrics['pitch_max'][iCase] :10.2e}")
-                print(
-                    f"yaw (deg)          {metrics['yaw_avg'][iCase] :10.2e}  {metrics['yaw_std'][iCase] :10.2e}  {metrics['yaw_max'][iCase] :10.2e}")
-                print(
-                    f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase] :10.2e}  {metrics['AxRNA_std'][iCase] :10.2e}  {metrics['AxRNA_max'][iCase] :10.2e}")
-                print(
-                    f"tower bending (Nm) {metrics['Mbase_avg'][iCase] :10.2e}  {metrics['Mbase_std'][iCase] :10.2e}  {metrics['Mbase_max'][iCase] :10.2e}")
-                print(
-                    f"tower bending SS(Nm) {metrics['MbaseSS_avg'][iCase] :10.2e}  {metrics['MbaseSS_std'][iCase] :10.2e}  {metrics['MbaseSS_max'][iCase] :10.2e}")
-
-                print(
-                    f"rotor speed (RPM)  {metrics['omega_avg'][iCase] :10.2e}  {metrics['omega_std'][iCase] :10.2e}  {metrics['omega_max'][iCase] :10.2e}")
-                print(
-                    f"blade pitch (deg)  {metrics['bPitch_avg'][iCase] :10.2e}  {metrics['bPitch_std'][iCase] :10.2e} ")
+                print(f"surge (m)          {metrics['surge_avg'][iCase] :10.2e}  {metrics['surge_std'][iCase] :10.2e}  {metrics['surge_max'][iCase] :10.2e}")
+                print(f"sway (m)           {metrics['sway_avg'][iCase] :10.2e}  {metrics['sway_std'][iCase] :10.2e}  {metrics['sway_max'][iCase] :10.2e}")
+                print(f"heave (m)          {metrics['heave_avg'][iCase] :10.2e}  {metrics['heave_std'][iCase] :10.2e}  {metrics['heave_max'][iCase] :10.2e}")
+                print(f"roll (deg)         {metrics['roll_avg'][iCase] :10.2e}  {metrics['roll_std'][iCase] :10.2e}  {metrics['roll_max'][iCase] :10.2e}")
+                print(f"pitch (deg)        {metrics['pitch_avg'][iCase] :10.2e}  {metrics['pitch_std'][iCase] :10.2e}  {metrics['pitch_max'][iCase] :10.2e}")
+                print(f"yaw (deg)          {metrics['yaw_avg'][iCase] :10.2e}  {metrics['yaw_std'][iCase] :10.2e}  {metrics['yaw_max'][iCase] :10.2e}")
+                print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase] :10.2e}  {metrics['AxRNA_std'][iCase] :10.2e}  {metrics['AxRNA_max'][iCase] :10.2e}")
+                print(f"tower bending (Nm) {metrics['Mbase_avg'][iCase] :10.2e}  {metrics['Mbase_std'][iCase] :10.2e}  {metrics['Mbase_max'][iCase] :10.2e}")
+                print(f"tower bending SS(Nm) {metrics['MbaseSS_avg'][iCase] :10.2e}  {metrics['MbaseSS_std'][iCase] :10.2e}  {metrics['MbaseSS_max'][iCase] :10.2e}")
+                print(f"rotor speed (RPM)  {metrics['omega_avg'][iCase] :10.2e}  {metrics['omega_std'][iCase] :10.2e}  {metrics['omega_max'][iCase] :10.2e}")
+                print(f"blade pitch (deg)  {metrics['bPitch_avg'][iCase] :10.2e}  {metrics['bPitch_std'][iCase] :10.2e} ")
                 print(f"rotor power        {metrics['power_avg'][iCase] :10.2e} ")
                 print(f"rotor thrust       {metrics['thrust_avg'][iCase] :10.2e} ")
 
@@ -1219,6 +1221,7 @@ class Model():
         diag_title = ' diagonal and'
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
+
         variableXaxis = []
         DOF1 = [4, 6]
         DOF2 = [1, 6]
