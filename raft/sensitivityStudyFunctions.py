@@ -5,8 +5,12 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 def runRaftSensitivity(yamlDesign, variableSensitivitystudy, startValueSensitivityStudy):
-    with open(yamlDesign , 'r') as file:
-        design = yaml.safe_load(file)
+
+    if isinstance(yamlDesign, str):
+        with open(yamlDesign , 'r') as file:
+            design = yaml.safe_load(file)
+    else:
+        design = yamlDesign
 
     modelObject = raft.Model(design, parametricAnalysisBool=True, variableSensitivitystudy=variableSensitivitystudy,
                          startValueSensitivityStudy=startValueSensitivityStudy)

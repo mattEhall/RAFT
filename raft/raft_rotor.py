@@ -316,7 +316,7 @@ class Rotor:
         '''
 
         # Convert gain-scheduling wrt pitch to wind speed
-        pc_angles = np.array(turbine['pitch_control']['GS_Angles']) * rad2deg
+        pc_angles = np.rad2deg(np.array(turbine['pitch_control']['GS_Angles']))
         self.kp_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Kp'],left=0,right=0)
         self.ki_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Ki'],left=0,right=0)
         self.k_float = -turbine['pitch_control']['Fl_Kp']
@@ -343,10 +343,10 @@ class Rotor:
         # extract derivatives of interest
         dT_dU = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
         dT_dOm = np.atleast_1d(np.diag(derivs["dT"]["dOmega"])) / rpm2radps
-        dT_dPi = np.atleast_1d(np.diag(derivs["dT"]["dpitch"])) * rad2deg
+        dT_dPi = np.rad2deg(np.atleast_1d(np.diag(derivs["dT"]["dpitch"])))
         dQ_dU = np.atleast_1d(np.diag(derivs["dQ"]["dUinf"]))
         dQ_dOm = np.atleast_1d(np.diag(derivs["dQ"]["dOmega"])) / rpm2radps
-        dQ_dPi = np.atleast_1d(np.diag(derivs["dQ"]["dpitch"])) * rad2deg
+        dQ_dPi = np.rad2deg(np.atleast_1d(np.diag(derivs["dQ"]["dpitch"])))
 
         # calculate steady aero forces and moments
         F_aero0 = np.array([loads["T"][0], loads["Y"][0], loads["Z"][0],

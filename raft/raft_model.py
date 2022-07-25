@@ -1124,7 +1124,7 @@ class Model():
             ax.plot(self.anglesArray, weightedEquivalentStressAllLoadCases, label=f'All Cases')
             ax.set_title('Fatigue Damage Equivalant Stress Around TB [MPa]')
             ax.set_xlabel('Location around TB circumference (deg)')
-        elif case['FLS_weight_factor'] is None:
+        else:
             print('case[FLS_weight_factor] not defined, skipping this step')
 
 
@@ -1212,7 +1212,7 @@ class Model():
         ax2.plot(variableXaxis, metrics['thrust_avg'][:] / (10 ** 6), '--', label = 'Thrust')
         ax1.set_xlabel(string_x_axis)
         ax1.set_ylabel('Generated Power [MW]', color='g')
-        ax2.set_ylabel('Thrust on rotor [MW]', color='b')
+        ax2.set_ylabel('Thrust on rotor [MN]', color='b')
         ax1.set_title('Turbine characteristics')
         ax1.legend()
         ax1.grid()
