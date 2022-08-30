@@ -61,6 +61,7 @@ class FOWT():
              
              
         potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
+        self.potModMaster = potModMaster
         dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
         min_freq_BEM = getFromDict(design['platform'], 'min_freq_BEM', default=self.dw/2/np.pi)
         self.dw_BEM  = 2.0*np.pi*min_freq_BEM
@@ -69,7 +70,8 @@ class FOWT():
         
         
         self.aeroMod = getFromDict(design['turbine'], 'aeroMod', default=1)  # flag for aerodynamics (0=off, 1=on)
-        
+        self.aeroServoMod = getFromDict(design['turbine'], 'aeroServoMod', default=1)  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
+
         
         # member-based platform description
         self.memberList = []                                         # list of member objects
@@ -123,7 +125,7 @@ class FOWT():
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
 
         # initialize BEM arrays, whether or not a BEM sovler is used
-        __, __, numberOfHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])
+        # __, __, numberOfHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
         self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
         self.X_BEM = np.zeros([73,6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
@@ -190,13 +192,14 @@ class FOWT():
             # Calculate the mass matrix of the FOWT about the PRP
             self.W_struc += translateForce3to6DOF( np.array([0,0, -g*mass]), center )  # weight vector
             self.M_struc += mem.M_struc     # mass/inertia matrix about the PRP
-            
+
             Sum_M_center += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
 
             # Tower calculations
             if mem.type <= 1:   # <<<<<<<<<<<< maybe find a better way to do the if condition
                 self.mtower = mass                  # mass of the tower [kg]
                 self.rCG_tow = center               # center of mass of the tower from the PRP [m]
+                # print(f'6: m_tower = {self.mtower} and z_vg_tow = {self.rCG_tow[2]}')
             # Substructure calculations
             if mem.type > 1:
                 self.msubstruc += mass              # mass of the substructure
@@ -254,12 +257,13 @@ class FOWT():
         mTOT = self.M_struc[0,0]                        # total mass of all the members
         rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
         self.rCG_TOT = rCG_TOT
-
         self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
-        
+        # print(f'7: mass substruc = {self.msubstruc} and rCG_substruc = {self.rCG_sub[2]}')
+        # print(f'8.1: C_hydro = {self.C_hydro}')
+        # print(f'8: c_hydro_cog = {translateMatrix6to6DOF(self.C_hydro,-self.rCG_sub)}')
         self.M_struc_subCM = translateMatrix6to6DOF(self.M_struc_subPRP, -self.rCG_sub) # the mass matrix of the substructure about the substruc's CM
         # need to make rCG_sub negative here because tM6to6DOF takes a vector that goes from where you want the ref point to be (CM) to the currently ref point (PRP)
-        
+
         '''
         self.I44 = 0        # moment of inertia in roll due to roll of the substructure about the substruc's CG [kg-m^2]
         self.I44B = 0       # moment of inertia in roll due to roll of the substructure about the PRP [kg-m^2]
@@ -304,10 +308,11 @@ class FOWT():
             zMeta = 0
         else:
             zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
+        # print(f'5: rCG_TOT = {rCG_TOT}')
 
         self.C_struc[3,3] = -mTOT*g*rCG_TOT[2]
         self.C_struc[4,4] = -mTOT*g*rCG_TOT[2]
-        
+
         self.C_struc_sub[3,3] = -self.msubstruc*g*self.rCG_sub[2]
         self.C_struc_sub[4,4] = -self.msubstruc*g*self.rCG_sub[2]
 
@@ -383,14 +388,14 @@ class FOWT():
             
             ph.create_hams_dirs(meshDir)                #
             
-            ph.write_hydrostatic_file(meshDir)          # HAMS needs a hydrostatics file, but it's unused for .1 and .3, so write a blank one
+            ph.write_hydrostatic_file(meshDir, kHydro=self.C_hydro)          # HAMS needs a hydrostatics file, but it's unused for .1 and .3, so write a blank one
             
             # prepare frequency settings for HAMS
             dw_HAMS = self.dw_BEM if dw==0 else dw     # frequency increment - allow override if provided
             
             wMax_HAMS = max(wMax, max(self.w))         # make sure the HAMS runs includes both RAFT and export frequency extents
             
-            nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
+            # nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
             # ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
             #                       numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS ,numHeadings=nHeadings, minHeading=minHeading, dHeading=headingStep, numThreads=self.numThreads)
                                   
@@ -408,7 +413,6 @@ class FOWT():
             addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
             M, P, R, I, w3, heads = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)
             self.headsStored = heads # JvS: Save heads for np.where for calculating right F_BEM
-            # print(self.headsStored)
             # interpole to the frequencies RAFT is using
             addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
             dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
@@ -456,10 +460,11 @@ class FOWT():
         self.F_aero0 = np.zeros([6])                                # mean aerodynamic forces and moments
         
         # only compute the aerodynamics if enabled and windspeed is nonzero
-        if self.aeroMod > 0 and case['wind_speed'] > 0.0:
+        if self.aeroServoMod > 0 and case['wind_speed'] > 0.0:
         
             F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch)  # get values about hub
 
+            # print(f'1: F_aero0 = {F_aero0}')
             # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
             rHub = np.array([0, 0, self.hHub])
             wind_heading = np.deg2rad(case['wind_heading'])
@@ -481,6 +486,8 @@ class FOWT():
             
             # convert forces to platform reference frame
             self.F_aero0 = transformForce(F_aero0, offset=rHub, orientation=rotateToFloaterOrientation)         # mean forces and moments
+            # print(f'2: F_aero0 = {self.F_aero0}')
+
             for iw in range(self.nw):
                 #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
                 self.F_aero[:,iw] = translateForce3to6DOF(np.matmul(rotateToFloaterOrientation, np.array([f_aero[iw], 0, 0])), rHub)
@@ -559,9 +566,11 @@ class FOWT():
             # print('Beta = ', self.beta)
             # print(self.headsStored.size)
             # print(self.X_BEM.size)
-            if self.headsStored.size == 1:
+            if self.headsStored.size == 1 and self.potModMaster == 0:
                 caseIndex = np.where(self.headsStored == self.beta)[0]
                 X_BEM_temp = np.reshape(self.X_BEM[caseIndex, :, :], (6, len(self.zeta)))
+            elif self.potModMaster == 1:
+                X_BEM_temp = np.zeros([6, self.nw])
             else:
                 interp_axis_object = interp1d(self.headsStored, self.X_BEM, axis = 0)
                 X_BEM_temp_interpolated = interp_axis_object(self.beta)
@@ -804,16 +813,16 @@ class FOWT():
             direction = ''
             multiplyfordirection = 1
             couplingterm2 = 3
-            I_RNA = self.IrRNA * np.cos(np.deg2rad(case['wind_heading'])) + self.IxRNA * np.sin(
-                np.deg2rad(case['wind_heading']))
+            I_RNA = self.IrRNA * np.abs(np.cos(np.deg2rad(case['wind_heading']))) + self.IxRNA * np.abs(np.sin(
+                np.deg2rad(case['wind_heading'])))
         elif direction in ['SS', 'Side-to-Side', 'sideside']:
             var1 = 1
             var2 = 3
             direction = 'SS'
             multiplyfordirection = -1
             couplingterm2 = 4
-            I_RNA = self.IxRNA * np.cos(np.deg2rad(case['wind_heading'])) + self.IrRNA * np.sin(
-                np.deg2rad(case['wind_heading']))
+            I_RNA = self.IxRNA * np.abs(np.cos(np.deg2rad(case['wind_heading']))) + self.IrRNA * np.abs(np.sin(
+                np.deg2rad(case['wind_heading'])))
 
         m_turbine = self.mtower + self.mRNA  # turbine total mass
         zCG_turbine = (self.rCG_tow[2] * self.mtower + self.hHub * self.mRNA) / m_turbine  # turbine center of gravity
@@ -927,9 +936,11 @@ class FOWT():
         breakpoint()
         print(endnow)
         '''
-
+        if self.aeroServoMod >= 1 and case['wind_speed'] > 0.0:
+        # wind PSD for reference
+            results['wind_PSD'][iCase, :] = getPSD(self.rotor.V_w)  # <<< need to confirm
         # rotor-related outputs are only available if aerodynamics modeling is enabled
-        if self.aeroMod > 0 and case['wind_speed'] > 0.0:
+        if self.aeroServoMod > 1 and case['wind_speed'] > 0.0:
             # rotor speed (rpm)
             # spectra
             phi_w   = self.rotor.C * (XiHub - self.rotor.V_w / (1j *self.w))
@@ -964,8 +975,7 @@ class FOWT():
             # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
             
             
-            # wind PSD for reference
-            results['wind_PSD'][iCase,:] = getPSD(self.rotor.V_w)   # <<< need to confirm
+
 
 
         '''

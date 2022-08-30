@@ -17,6 +17,7 @@ rc('font', **{'family': 'sans-serif', 'sans-serif': ['Arial']})
 rc('legend',fontsize=4)
 rc('font', size=6)
 plt.rcParams['axes.formatter.limits'] = (-3, 3)
+plt.rcParams["axes.formatter.use_mathtext"]  = True
 # rc('text', usetex=True)
 
 from fatiguepy import *
@@ -156,7 +157,7 @@ class Model():
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
-
+        print(f'self.fowtList[0].Xi0 = {self.fowtList[0].Xi0}')
         # TODO: add printing of summary info here - mass, stiffnesses, etc
 
     def analyzeCases(self, display=False, numberOfCores=1):
@@ -307,7 +308,7 @@ class Model():
                 self.solveDynamics(case)
 
                 gc.collect()
-                return self.Xi[0:6, :], fowt.Xi0
+                return self.Xi[0:6, :], self.fowtList[0].Xi0
             else:
                 # solve system dynamics
                 _, M_tot, B_tot, C_tot = self.solveDynamics(case)
@@ -339,6 +340,7 @@ class Model():
 
         for iCase in range(nCases):
             self.Xi = Xi_store[iCase]
+            self.fowtList[0].Xi0 = Xi0_store[iCase]
 
             if nCases <= 100:
                 self.T_moor = Mooring_T[iCase]
@@ -348,14 +350,14 @@ class Model():
             # form dictionary of case parameters
             case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
             if nCases > 100:
+                self.fowtList[0].Xi0 = Xi0_store[iCase]
                 for fowt in self.fowtList:
-                    fowt.Xi0 = Xi0_store[iCase]
                     fowt.calcTurbineConstants(case, ptfm_pitch=(fowt.Xi0[4] ** 2 + fowt.Xi0[3] ** 2) ** 0.5)
                     # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
 
             # ------------------------------------------------------------------------
             # process outputs that are specific to the floating unit
-            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6, :])
+            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, self.fowtList[0].Xi0, self.Xi[0:6, :])
             # self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])
 
             # process mooring tension outputs
@@ -429,6 +431,8 @@ class Model():
 
         # apply any mean aerodynamic and hydrodynamic loads
         F_PRP = self.fowtList[0].F_aero0  # + self.fowtList[0].F_hydro0 <<< hydro load would be nice here eventually
+        # print(f'0: F_PRP = {F_PRP}')
+        # print(f'F_PRP = {F_PRP}')
         self.ms.bodyList[0].f6Ext = np.array(F_PRP)
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -449,6 +453,7 @@ class Model():
         # printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
+        print(f'4: Offset from MooringandOffset: {r6eq}')
         fowt.Xi0 = np.array(r6eq)  # save current mean offsets for the FOWT
         # self.ms.plot()
 
@@ -491,6 +496,8 @@ class Model():
         # add in mooring stiffness from MoorPy system
         C_tot += np.array(self.C_moor0)
 
+
+
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
 
@@ -500,6 +507,11 @@ class Model():
         # add fowt's terms to system matrices (BEM arrays are not yet included here)
         M_tot += fowt.M_struc + fowt.A_hydro_morison  # mass
         C_tot += fowt.C_struc + fowt.C_hydro  # stiffness
+
+        # print(f'fowt.A_hydro_morison = {fowt.A_hydro_morison}')
+        # print(f'C_moor0 = {self.C_moor0}')
+        # print(f'C_struc = {fowt.C_struc}')
+        # print(f'C_hydro = {fowt.C_hydro}')
 
         # check viability of matrices
         message = ''
@@ -514,8 +526,8 @@ class Model():
                 'System matrices computed by RAFT have one or more small or negative diagonals: ' + message)
 
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-        eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot),
-                                                          C_tot))  # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+        # eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))  # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))  # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
         if any(eigenvals <= 0.0):
             raise RuntimeError("Error: zero or negative system eigenvalues detected.")
@@ -643,7 +655,8 @@ class Model():
         B_lin = fowt.B_aero + fowt.B_struc[:, :, None] + fowt.B_BEM  # damping
         C_lin = fowt.C_struc + self.C_moor + fowt.C_hydro  # stiffness
         F_lin = fowt.F_aero + fowt.F_BEM + fowt.F_hydro_iner  # excitation
-
+        # temp = case['wave_heading']
+        # print(f'For Wave_heading1 = {temp}, Pitch excitation{fowt.F_BEM[4][20]}')
         if F_BEM_plot:
             freqMesh, headingMesh = np.meshgrid(fowt.w/TwoPi, fowt.headsStored[:38])
             figF, axF = plt.subplots(nrows=3, ncols=2, sharex=True, figsize=get_figsize(self.latex_width, subplots=(3,2)))
@@ -758,6 +771,7 @@ class Model():
 
             if iiter == nIter - 1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
+                print(f" Iteration {iiter}, dit not converge, (largest change is {np.max(tolCheck):.5f} >= {tol})")
 
         if conv_plot:
             # labels for convergence plots
@@ -877,10 +891,8 @@ class Model():
 
             # 6DOF matrices for the support structure (everything but turbine) including mass, hydrostatics, and mooring reactions
             self.results['properties']['M support structure'] = fowt.M_struc_subCM  # mass matrix
-            self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:, :,
-                                                                                       -1]  # hydrodynamic added mass (currently using highest frequency of BEM added mass)
-            self.results['properties'][
-                'C support structure'] = fowt.C_struc_sub + fowt.C_hydro + self.C_moor0  # stiffness
+            self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:, :,-1]  # hydrodynamic added mass (currently using highest frequency of BEM added mass)
+            self.results['properties']['C support structure'] = fowt.C_struc_sub + fowt.C_hydro + self.C_moor0  # stiffness
 
         # ----- response outputs (always in standard units) ---------------------------------------
 
@@ -959,25 +971,25 @@ class Model():
         for iCase in range(nCases):
             case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
 
-            ax['surge'].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
-            ax['sway'].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
-            ax['heave'].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
-            ax['pitch'].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
-            ax['roll'].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
-            ax['yaw'].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
-            ax['AxRNA'].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
+            ax['surge'].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :], label=f'Case {iCase+1}')  # surge
+            ax['sway'].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :], label=f'Case {iCase+1}')  # surge
+            ax['heave'].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :], label=f'Case {iCase+1}')  # heave
+            ax['pitch'].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :], label=f'Case {iCase+1}')  # pitch [deg]
+            ax['roll'].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :], label=f'Case {iCase+1}')  # pitch [deg]
+            ax['yaw'].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :], label=f'Case {iCase+1}')  # pitch [deg]
+            ax['AxRNA'].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :], label=f'Case {iCase+1}')  # nacelle acceleration
             ax['MBaseFA'].plot(self.w / TwoPi,
                                TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
             ax['MBaseSS'].plot(self.w / TwoPi, TwoPi * metrics['MbaseSS_PSD'][iCase,
                                                        :])  # tower base bending moment (using FAST's kN-m)
             ax['Wave1'].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD1'][iCase, :],
-                             label=f'ws 1 case {iCase + 1}')  # wave spectrum
+                             label=f'Wave system 1 case {iCase + 1}')  # wave spectrum
             if not np.all(metrics['wave_PSD2'][iCase, :] == 0):
                 ax['Wave2'].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD2'][iCase, :],
-                                 label=f'ws 2 case {iCase + 1}')  # wave spectrum
+                                 label=f'Wave system 2 case {iCase + 1}')  # wave spectrum
             case_wh = case['wave_heading2']
             ax['Wind'].plot(self.w / TwoPi, TwoPi * metrics['wind_PSD'][iCase, :],
-                            label=f'Misalignment swell wave = {case_wh} [deg]')  # wind spectrum
+                            label=f'Wind spectrum case {iCase + 1}')  # wind spectrum
             # need a variable number of subplots for the mooring lines
             # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
@@ -1030,9 +1042,9 @@ class Model():
                 ax = plt.axes(projection='3d')
                 ax.plot_surface(np.rad2deg(ANGLESMesh), FREQMesh / TwoPi, TwoPi * sigmaX,
                                 cmap=plt.cm.jet)  # , rstride=1)
-                ax.set_xlabel('angle around TB (deg)')
-                ax.set_ylabel('frequency [Hz]')
-                ax.set_zlabel('sigma_x (MPa^2/Hz)')
+                ax.set_xlabel('Angle around TB [deg]')
+                ax.set_ylabel('Frequency [Hz]')
+                ax.set_zlabel(r'$\sigma_x$ [MPa$^2$/Hz]')
                 ax.set_xbound(0, 360)
                 ax.set_ybound(0, 0.4)
 
@@ -1065,18 +1077,18 @@ class Model():
                 ax.plot(self.anglesArray, metrics['DEL_angles'][iCase, :],
                         label=f'Case {iCase + 1}, wind heading = {wind_heading} deg, wave 1 = {wave_1} deg{wave2string}')
             ax.set_title('Fatigue Damage Equivalant Load Around TB [MPa]')
-            ax.set_xlabel('Location around TB circumference (deg)')
+            ax.set_xlabel('Location around TB circumference [deg]')
             if nCases <= 8:
                 ax.legend()
         elif plot == 'angles':
             plt.figure(figsize=get_figsize(self.latex_width))
-            plt.ylabel('Sigma_x (MPa)')
+            plt.ylabel('Stress (MPa)')
             plt.xlim([0, 360])
             for iCase in range(nCases):
                 plt.plot(np.rad2deg(self.anglesArray), metrics['DEL_angles'][iCase, :], label=f'Case {iCase + 1}, ')
             plt.legend()
-            plt.xlabel('Location around TB circumference (deg)')
-            plt.title('Fatigue Damage Equivalant Load Around TB [MPa]')
+            plt.xlabel('Location around TB circumference [deg]')
+            plt.title('Equivalent stress around TB [MPa]')
             plt.grid()
 
         if plot_eq_stress_angles:
@@ -1089,41 +1101,47 @@ class Model():
             ax.plot(variableXaxis, np.amax(metrics['DEL_angles'][:, :], 1), label='Max eq stress')
             ax.plot(variableXaxis, np.amin(metrics['DEL_angles'][:, :], 1), label='Min eq stress')
             ax.set_xlabel(string_x_axis)
-            ax.set_ylabel('Stress (FDEL) MPa')
+            ax.set_ylabel('Equivalent stress [MPa]')
             ax.set_ylim(bottom=0)
             ax.set_title(f'Equivalent stress for changing {string_x_axis}')
             ax.legend()
             ax.grid()
 
         case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][0]))
-        if weighted_sum_cases and case['FLS_weight_factor'] is not None:
-            print('Calculating weighted equivalent stress for all cases now...')
-            total_weight_factor = 0
-            for iCase in range(nCases):
-                case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
-                total_weight_factor += float(case['FLS_weight_factor'])
-            print(total_weight_factor)
-            weightedEquivalentStressAllLoadCases = np.zeros(self.numAngles)
-            counter_term = np.zeros(self.numAngles)
-
-            for iAngles in range(self.numAngles):
+        try:
+            case['FLS_weight_factor']
+            if weighted_sum_cases:
+                print('Calculating weighted equivalent stress for all cases now...')
+                total_weight_factor = 0
                 for iCase in range(nCases):
-
                     case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+                    total_weight_factor += float(case['FLS_weight_factor'])
+                print(total_weight_factor)
+                weightedEquivalentStressAllLoadCases = np.zeros(self.numAngles)
+                counter_term = np.zeros(self.numAngles)
 
-                    equivalent_stress_angle = metrics['DEL_angles'][iCase,iAngles]
-                    counter_term[iAngles] += equivalent_stress_angle**6*float(case['FLS_weight_factor'])
+                for iAngles in range(self.numAngles):
+                    for iCase in range(nCases):
+                        case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
 
-                weightedEquivalentStressAllLoadCases[iAngles] = ((counter_term[iAngles])/total_weight_factor)**(1/6)
+                        equivalent_stress_angle = metrics['DEL_angles'][iCase, iAngles]
+                        counter_term[iAngles] += equivalent_stress_angle ** 6 * float(case['FLS_weight_factor'])
 
-            plt.figure(figsize=get_figsize(self.latex_width))
-            ax = plt.subplot(111, polar=True)
-            ax.grid(True)
-            ax.set_theta_direction(-1)
-            ax.set_theta_offset(np.pi / 2.0)
-            ax.plot(self.anglesArray, weightedEquivalentStressAllLoadCases, label=f'All Cases')
-            ax.set_title('Fatigue Damage Equivalant Stress Around TB [MPa]')
-            ax.set_xlabel('Location around TB circumference (deg)')
+                    weightedEquivalentStressAllLoadCases[iAngles] = ((counter_term[iAngles]) / total_weight_factor) ** (
+                                1 / 6)
+
+                plt.figure(figsize=get_figsize(self.latex_width))
+                ax = plt.subplot(111, polar=True)
+                ax.grid(True)
+                ax.set_theta_direction(-1)
+                ax.set_theta_offset(np.pi / 2.0)
+                ax.plot(self.anglesArray, weightedEquivalentStressAllLoadCases, label=f'All Cases')
+                ax.set_title('Fatigue Damage Equivalant Stress Around TB [MPa]')
+                ax.set_xlabel('Location around TB circumference (deg)')
+
+        except KeyError:
+            print("FLS_weight_factor defined in cases dict")
+
         else:
             print('case[FLS_weight_factor] not defined, skipping this step')
 
@@ -1179,20 +1197,20 @@ class Model():
 
         fig, ax = plt.subplots(figsize=get_figsize(self.latex_width))
         if singleDOF:
-            ax.plot(variableXaxis, rollRMS, label='RMS values of roll-response')
-            ax.plot(variableXaxis, pitchRMS, label='RMS values of pitch-response')
-            ax.plot(variableXaxis, yawRMS, label='RMS values of yaw-response')
+            ax.plot(variableXaxis, rollRMS, label='SD values of roll-response')
+            ax.plot(variableXaxis, pitchRMS, label='SD values of pitch-response')
+            ax.plot(variableXaxis, yawRMS, label='SD values of yaw-response')
         if twoDOF:
-            ax.plot(variableXaxis, rollyaw, label='Root value of roll and yaw RMS')
-            ax.plot(variableXaxis, pitchyaw, label='Root value of pitch and yaw RMS')
-            ax.plot(variableXaxis, rollpitch, label='Root value of roll and pitch RMS')
+            ax.plot(variableXaxis, rollyaw, label='L2 norm of roll and yaw SD')
+            ax.plot(variableXaxis, pitchyaw, label='L2 norm of pitch and yaw SD')
+            ax.plot(variableXaxis, rollpitch, label='L2 norm of roll and pitch SD')
 
         if RootRMS:
-            ax.plot(variableXaxis, rotation_RMS, label='Root value of pitch, roll and yaw RMS')
+            ax.plot(variableXaxis, rotation_RMS, label='L2 norm of pitch, roll and yaw SD')
         ax.set_ylim(bottom=0)
         ax.set_xlabel(string_x_axis)
-        ax.set_ylabel('Root of RMS values [-]')
-        ax.set_title('RMS values for rotational DOFs')
+        ax.set_ylabel('L2 Norm SD values [-]')
+        ax.set_title('SD values/L2 norm for rotational DOFs for a varying excitation parameter.')
         ax.legend()
         ax.grid()
 
@@ -1258,6 +1276,54 @@ class Model():
             ax[2, 0].set_ylabel(f'$C$ $[kg m^2/s^2]$')
             fig.suptitle(f'Roll, Pitch, Yaw{diag_title} coupling terms ({titleString}).')
 
+    def plotCouplingTerms_ALL(self, diagonal = True):
+        diag_title = ' diagonal and'
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        variableXaxis = []
+        DOF1 = [1, 6]
+        DOF2 = [1, 6]
+
+        for iCase in range(nCases):
+            cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+            _, _, titleString = retrieveAxisParAnalysis(iCase, cases, self.changeType, variableXaxis,
+                                                                   self.design['parametricAnalysis'])
+            fig, ax = plt.subplots(3, 6, sharex=True, figsize=get_figsize(self.latex_width,fraction=2, subplots=(6,6)))
+            for dof in range(DOF1[0] - 1, DOF1[1]):
+                for dof2 in range(DOF2[0] - 1, DOF2[1]):
+                    if dof == dof2 and diagonal is not True:
+                        diag_title = ''
+                    else:
+
+                        ax[0, dof].plot(self.w / TwoPi, self.M_tot_store[iCase][dof, dof2, :],
+                                            label=f'$(M+A)_{{{dof + 1},{dof2 + 1}}}$')
+                        ax[1, dof].plot(self.w / TwoPi, self.B_tot_store[iCase][dof, dof2, :],
+                                            label=f'$B_{{{dof + 1},{dof2 + 1}}}$')
+                        ax[2, dof].plot(self.w / TwoPi, self.C_tot_store[iCase][dof, dof2, :],
+                                            label=f'$C_{{{dof + 1},{dof2 + 1}}}$')
+                        ax[0, dof].legend()#(loc = 1)
+                        ax[1, dof].legend()#(loc = 1)
+                        ax[2, dof].legend()#(loc = 1)
+
+            ax[0, 0].set_title('Surge')
+            ax[0, 1].set_title('Sway')
+            ax[0, 2].set_title('Heave')
+            ax[0, 3].set_title('Roll')
+            ax[0, 4].set_title('Pitch')
+            ax[0, 5].set_title('Yaw')
+            ax[2, 0].set_xlabel('Frequency [Hz]')
+            ax[2, 1].set_xlabel('Frequency [Hz]')
+            ax[2, 2].set_xlabel('Frequency [Hz]')
+            ax[2, 3].set_xlabel('Frequency [Hz]')
+            ax[2, 4].set_xlabel('Frequency [Hz]')
+            ax[2, 5].set_xlabel('Frequency [Hz]')
+            ax[0, 0].set_ylabel(f'$(M+A)$ $[kg m^2]$')
+            ax[1, 0].set_ylabel(f'$B$ $[kg m^2/s]$')
+            ax[2, 0].set_ylabel(f'$C$ $[kg m^2/s^2]$')
+            fig.suptitle(f'Roll, Pitch, Yaw{diag_title} coupling terms ({titleString}).')
+
+
     def plotBEMTerms(self, diagonal=True):
         diag_title = ' diagonal and'
 
@@ -1284,6 +1350,42 @@ class Model():
         ax[1, 0].set_xlabel('Frequency [Hz]')
         ax[1, 1].set_xlabel('Frequency [Hz]')
         ax[1, 2].set_xlabel('Frequency [Hz]')
+        ax[0, 0].set_ylabel(f'$A_{{BEM}}$ $[kg m^2]$')
+        ax[1, 0].set_ylabel(f'$B_{{BEM}}$ $[kg m^2/s]$')
+        fig.suptitle(f'Roll, Pitch, Yaw BEM{diag_title} coupling terms.')
+
+    def plotBEMTerms6DOF(self, diagonal=True):
+        diag_title = ' diagonal and'
+
+        fowt = self.fowtList[0]
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+        DOF1 = [1, 6]
+        DOF2 = [1, 6]
+        fig, ax = plt.subplots(2, 6, sharex=True, figsize=get_figsize(self.latex_width, subplots=(2.2,3)))
+        for dof in range(DOF1[0] - 1, DOF1[1]):
+            for dof2 in range(DOF2[0] - 1, DOF2[1]):
+                if dof==dof2 and diagonal is not True:
+                    diag_title = ''     # Set title string to empty, this prevents printing of 'diagonals and' if only plotting coupling terms.
+                else:
+
+                    ax[0, dof].plot(self.w / TwoPi, fowt.A_BEM[dof, dof2, :],  label=f'$A_{{{dof + 1},{dof2 + 1}}}$')
+                    ax[1, dof].plot(self.w / TwoPi, fowt.B_BEM[dof, dof2, :],  label=f'$B_{{{dof + 1},{dof2 + 1}}}$')
+                    ax[0, dof].legend(loc = 1)
+                    ax[1, dof].legend(loc = 1)
+
+        ax[0, 0].set_title('Surge')
+        ax[0, 1].set_title('Sway')
+        ax[0, 2].set_title('Heave')
+        ax[0, 3].set_title('Roll')
+        ax[0, 4].set_title('Pitch')
+        ax[0, 5].set_title('Yaw')
+        ax[1, 0].set_xlabel('Frequency [Hz]')
+        ax[1, 1].set_xlabel('Frequency [Hz]')
+        ax[1, 2].set_xlabel('Frequency [Hz]')
+        ax[1, 3].set_xlabel('Frequency [Hz]')
+        ax[1, 4].set_xlabel('Frequency [Hz]')
+        ax[1, 5].set_xlabel('Frequency [Hz]')
         ax[0, 0].set_ylabel(f'$A_{{BEM}}$ $[kg m^2]$')
         ax[1, 0].set_ylabel(f'$B_{{BEM}}$ $[kg m^2/s]$')
         fig.suptitle(f'Roll, Pitch, Yaw BEM{diag_title} coupling terms.')
@@ -1328,6 +1430,54 @@ class Model():
             ax[0, 0].set_ylabel(f'$A_{{aero}}$ $[kg m^2]$')
             ax[1, 0].set_ylabel(f'$B_{{aero}}$ $[kg m^2/s]$')
             fig.suptitle(f'Roll, Pitch, Yaw Aerodynamic diagonal and coupling terms ({titleString}).')
+
+    def plotAeroTerms6DOF(self):
+        # fowt = self.fowtList[0]
+        metrics = self.results['case_metrics']
+        variableXaxis = []
+        DOF1 = [1, 6]
+        DOF2 = [1, 6]
+
+        if self.changeType in ['misalignment', 'floaterRotation', 'windSpeed', 'windMisalignment']:
+            nCases = len(metrics['surge_avg'])
+        else:
+            nCases = 1
+        for iCase in range(nCases):
+            cases = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
+            _, _, titleString = retrieveAxisParAnalysis(iCase, cases, self.changeType, variableXaxis,
+                                                        self.design['parametricAnalysis'])
+            fig, ax = plt.subplots(2, 6, sharex=True, figsize=get_figsize(self.latex_width, subplots=(2.5,6)))
+            for dof in range(DOF1[0] - 1, DOF1[1]):
+                for dof2 in range(DOF2[0] - 1, DOF2[1]):
+                    if dof2 == 5:
+                        ax[0, dof].plot(self.w / TwoPi, self.fowt_A_aero_stored[iCase][dof, dof2, :],
+                                            label=f'$A_{{{dof + 1},{dof2 + 1}}}$')
+                        ax[1, dof].plot(self.w / TwoPi, self.fowt_B_aero_stored[iCase][dof, dof2, :],
+                                            label=f'$B_{{{dof + 1},{dof2 + 1}}}$')
+                    else:
+                        ax[0, dof].plot(self.w / TwoPi, self.fowt_A_aero_stored[iCase][dof, dof2, :],
+                                            label=f'$A_{{{dof + 1},{dof2 + 1}}}$')
+                        ax[1, dof].plot(self.w / TwoPi, self.fowt_B_aero_stored[iCase][dof, dof2, :],
+                                            label=f'$B_{{{dof + 1},{dof2 + 1}}}$')
+                    ax[0, dof].legend()#(loc = 1)
+                    ax[1, dof].legend()#(loc = 1)
+
+            ax[0, 0].set_title('Surge')
+            ax[0, 1].set_title('Sway')
+            ax[0, 2].set_title('Heave')
+            ax[0, 3].set_title('Roll')
+            ax[0, 4].set_title('Pitch')
+            ax[0, 5].set_title('Yaw')
+            ax[1, 0].set_xlabel('Frequency [Hz]')
+            ax[1, 1].set_xlabel('Frequency [Hz]')
+            ax[1, 2].set_xlabel('Frequency [Hz]')
+            ax[1, 3].set_xlabel('Frequency [Hz]')
+            ax[1, 4].set_xlabel('Frequency [Hz]')
+            ax[1, 5].set_xlabel('Frequency [Hz]')
+            ax[0, 0].set_ylabel(f'$A_{{aero}}$ $[kg m^2]$')
+            ax[1, 0].set_ylabel(f'$B_{{aero}}$ $[kg m^2/s]$')
+            fig.suptitle(f'Roll, Pitch, Yaw Aerodynamic diagonal and coupling terms ({titleString}).')
+
 
     def plotCouplingContribution(self, diagonal = True):
         diag_title = ' diagonal and'

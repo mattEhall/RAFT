@@ -885,6 +885,7 @@ def bmatrix(a):
     :a: numpy array
     :returns: LaTeX bmatrix as a string
     """
+
     if len(a.shape) > 2:
         raise ValueError('bmatrix can at most display two dimensions')
     lines = str(a).replace('[', '').replace(']', '').splitlines()

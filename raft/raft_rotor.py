@@ -174,8 +174,8 @@ class Rotor:
         # split out blade geometry info from table 
         geometry_table = np.array(turbine['blade']['geometry'])
         blade_r         = geometry_table[:,0]
-        blade_chord     = geometry_table[:,1]
-        blade_theta     = geometry_table[:,2]
+        blade_chord     = geometry_table[:,1]/1.3
+        blade_theta     = geometry_table[:,2]/0.9
         blade_precurve  = geometry_table[:,3]
         blade_presweep  = geometry_table[:,4]
         

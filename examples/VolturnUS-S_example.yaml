@@ -4,7 +4,7 @@ comments: Revised example with "super-member" type inputs, including one for the
 
 
 settings:                   # global Settings
-    min_freq     :  0.001   #  [Hz]       lowest frequency to consider, also the frequency bin width 
+    min_freq     :  0.001   #  [Hz]       lowest frequency to consider, also the frequency bin width
     max_freq     :  0.40    #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
     nIter        :   12      # sets how many iterations to perform in Model.solveDynamics()
@@ -20,11 +20,11 @@ parametricAnalysis:
     misalignmentAngle     : 5                # [deg] Misalignment angle to evaluate
     numMisalign           : 35                # [int] Number of misalignment angles from base case to evaluate
 
-    rotationAngle         : 5                # [deg] rotation with which to rotate the loads wrt floater orientation
-    numRotations          : 24               # [int] Number of rotations
+    rotationAngle         : 120                # [deg] rotation with which to rotate the loads wrt floater orientation
+    numRotations          : 2               # [int] Number of rotations
 
-    windSpeedIncrement    : 0.25                # [m/s] Increment in significant wave height, component 1
-    numWSIncrements       : 80                 # [int] Number of increments in wave height, component 1
+    windSpeedIncrement    : 1                # [m/s] Increment in significant wave height, component 1
+    numWSIncrements       : 23                 # [int] Number of increments in wave height, component 1
 
     waveHeightIncrement1  : 0.15                # [m] Increment in significant wave height, component 1
     numWHIncrements1      : 40                 # [int] Number of increments in wave height, component 1
@@ -35,8 +35,8 @@ parametricAnalysis:
     wavePeriodIncrement1  : 0.5                 # [s] Increment in significant wave height, component 1
     numWPIncrements1      : 40                 # [int] Number of increments in wave height, component 1
 
-    wavePeriodIncrement2  : 0.5                 # [s] Increment in significant wave height, component 2
-    numWPIncrements2      : 50                # [int] Number of increments in wave height, component 2
+    wavePeriodIncrement2  : 1.0                 # [s] Increment in significant wave height, component 2
+    numWPIncrements2      : 22               # [int] Number of increments in wave height, component 2
 
 site:
     water_depth : 200        # [m]      uniform water depth
@@ -53,7 +53,7 @@ cases:
 #        -  [    3,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0,               True,           JONSWAP,            20,          3,             60 ]
 
         # Base case for thesis, misalignment and rotation.
-        - [10.5,       0 ,     IIB_NTM,     operating,          0,        JONSWAP,         6,         2,           0,           True,           JONSWAP,            10,          1,        90,   3.3,  1]
+        - [10.5,       45 ,     IIB_NTM,     operating,          0,        JONSWAP,         6,         2,           0,           True,           JONSWAP,            10,          1,        90,   3.3,  1]
 
 
 turbine:
