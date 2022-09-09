@@ -840,6 +840,25 @@ def retrieveAxisParAnalysis(iCase, cases, changeType, variableXaxis, parametricA
 
     return variableXaxis, string_x_axis, title_string
 
+def plotFloaterRotation_min_max_moments(equivalent_moment_list, floater_rotations):
+
+    max_moment = []
+    min_moment = []
+
+    for index, equivalent_moment_list_in_list in enumerate(equivalent_moment_list):
+        max_moment.append([np.amax(equivalent_moment_list_in_list)])
+        min_moment.append([np.amax(equivalent_moment_list_in_list)])
+
+    fig, ax = plt.subplots(figsize=get_figsize(400))
+    ax.plot(floater_rotations, max_moment, label='Max eq stress')
+    ax.plot(floater_rotations, min_moment, label='Min eq stress')
+    ax.set_xlabel('Floater Rotation angle [deg]')
+    ax.set_ylabel('Equivalent Moment [MNm]')
+    ax.set_ylim(bottom=0)
+    ax.set_title(f'Equivalent Moment for changing different floater rotations')
+    ax.legend()
+    ax.grid()
+
 def get_figsize(width, fraction=1, subplots=(1, 1)):
     """Set figure dimensions to avoid scaling in LaTeX.
 
@@ -893,6 +912,29 @@ def bmatrix(a):
     rv += ['  ' + ' & '.join(l.split()) + r'\\' for l in lines]
     rv +=  [r'\end{bmatrix}']
     return '\n'.join(rv)
+
+def printCaseToTable(cases, keys):
+    parameters = ['U$_{ave}$ [m/s]', 'Turbulence Intensity [-]', 'Misalignment Angle [deg]', 'Yaw error [deg]'
+                  ,'T$_p$ system 1 [s]', 'H$_s$ system 1 [m]', '$\gamma$ system 1 [-]', 'Misalignment angle system 1 [deg]'
+                  ,'T$_p$ system 2 [s]', 'H$_s$ system 2 [m]', '$\gamma$ system 2 [-]', 'Misalignment angle system 2 [deg]']
+    for iCase, item in enumerate(cases):
+        case = dict(zip(keys, cases[iCase]))
+        parameters[0] += f" & {case['wind_speed']:.2f}"
+        parameters[1] += f" & {case['turbulence']:.2f}"
+        parameters[2] += f" & {case['wind_heading']:.2f}"
+        parameters[3] += f" & {case['yaw_misalign']:.2f}"
+        parameters[4] += f" & {case['wave_period']:.2f}"
+        parameters[5] += f" & {case['wave_height']:.2f}"
+        parameters[6] += f" & {case['gamma_ws1']:.2f}"
+        parameters[7] += f" & {case['wave_heading']:.2f}"
+        parameters[8] += f" & {case['wave_period2']:.2f}"
+        parameters[9] += f" & {case['wave_height2']:.2f}"
+        parameters[10] += f" & {case['gamma_ws2']:.2f}"
+        parameters[11] += f" & {case['wave_heading2']:.2f}"
+
+    for p, temp in enumerate(parameters):
+        parameters[p] += f' \\\ \hline'
+        print(parameters[p])
 
 if __name__ == '__main__':
     

@@ -157,7 +157,7 @@ class Model():
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
-        print(f'self.fowtList[0].Xi0 = {self.fowtList[0].Xi0}')
+        # print(f'self.fowtList[0].Xi0 = {self.fowtList[0].Xi0}')
         # TODO: add printing of summary info here - mass, stiffnesses, etc
 
     def analyzeCases(self, display=False, numberOfCores=1):
@@ -453,7 +453,7 @@ class Model():
         # printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
-        print(f'4: Offset from MooringandOffset: {r6eq}')
+        # print(f'4: Offset from MooringandOffset: {r6eq}')
         fowt.Xi0 = np.array(r6eq)  # save current mean offsets for the FOWT
         # self.ms.plot()
 
@@ -1052,12 +1052,15 @@ class Model():
                 #     DK[iAngles] = Dirlik.DK(5.56, 1.62*10**22, sigmaX[iAngles,:], self.w, 0, 0 )
                 #     print(DK[iAngles].Damage())
                 moments = prob_moment.Probability_Moment(sigmaX[:, iAngles], self.w)
-                sigma_max = 6 * moments.momentn(0) ** 0.5
+                sigma_max = 8 * moments.momentn(0) ** 0.5
+                # print(sigma_max)
+                if sigma_max >= 350:
+                    print("sigma_max estimated above yield stress")
                 stress_range = np.linspace(0, sigma_max, 40)
-                DK_temp = Dirlik.DK(6, 1.62 * 10 ** 22, sigmaX[:, iAngles], self.w, 30 * 364 * 24 * 3600, stress_range)
+                DK_temp = Dirlik.DK(4, 1.62 * 10 ** 22, sigmaX[:, iAngles], self.w, 30 * 364 * 24 * 3600, stress_range) # 5 is crack growth rate
                 DK_ps[iAngles, :] = DK_temp.counting_cycles()
-                metrics['DEL_angles'][iCase, iAngles] = (np.dot(DK_temp.counting_cycles(), stress_range ** 6) / np.sum(
-                    DK_temp.counting_cycles())) ** (1 / 6)
+                metrics['DEL_angles'][iCase, iAngles] = (np.dot(DK_temp.counting_cycles(), stress_range ** 4) / np.sum(
+                    DK_temp.counting_cycles())) ** (1 / 4) #k-factor = 4 for steels
 
         if plot == 'polar':
             plt.figure(figsize=get_figsize(self.latex_width))
@@ -1109,14 +1112,16 @@ class Model():
 
         case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][0]))
         try:
-            case['FLS_weight_factor']
+            check = case['FLS_weight_factor']
             if weighted_sum_cases:
-                print('Calculating weighted equivalent stress for all cases now...')
+                if self.printStatements:
+                    print('case[FLS_weight_factor] is present, now estimating equivalent stress/moment.')
+                    print('Calculating weighted equivalent stress for all cases now...')
                 total_weight_factor = 0
                 for iCase in range(nCases):
                     case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
                     total_weight_factor += float(case['FLS_weight_factor'])
-                print(total_weight_factor)
+
                 weightedEquivalentStressAllLoadCases = np.zeros(self.numAngles)
                 counter_term = np.zeros(self.numAngles)
 
@@ -1125,26 +1130,41 @@ class Model():
                         case = dict(zip(self.design['cases']['keys'], self.design['cases']['data'][iCase]))
 
                         equivalent_stress_angle = metrics['DEL_angles'][iCase, iAngles]
-                        counter_term[iAngles] += equivalent_stress_angle ** 6 * float(case['FLS_weight_factor'])
+                        counter_term[iAngles] += equivalent_stress_angle ** 4 * float(case['FLS_weight_factor'])
 
                     weightedEquivalentStressAllLoadCases[iAngles] = ((counter_term[iAngles]) / total_weight_factor) ** (
-                                1 / 6)
+                                1 / 4) #k-factor is 4 for steels
 
                 plt.figure(figsize=get_figsize(self.latex_width))
                 ax = plt.subplot(111, polar=True)
                 ax.grid(True)
-                ax.set_theta_direction(-1)
+                # ax.set_theta_direction(-1)
                 ax.set_theta_offset(np.pi / 2.0)
                 ax.plot(self.anglesArray, weightedEquivalentStressAllLoadCases, label=f'All Cases')
                 ax.set_title('Fatigue Damage Equivalant Stress Around TB [MPa]')
                 ax.set_xlabel('Location around TB circumference (deg)')
 
+                d = getFromDict(self.design['turbine']['tower'], 'd', shape=-1, default=[10.0, 8.0])[0]
+                thickness = getFromDict(self.design['turbine']['tower'], 't', shape=-1, default=[0.1, 0.08])[0]
+                Izz = np.pi / 8 * thickness * d ** 3
+
+                plt.figure(figsize=get_figsize(self.latex_width))
+                ax_mom = plt.subplot(111, polar=True)
+                ax_mom.grid(True)
+                # ax_mom.set_theta_direction(-1)
+                ax_mom.set_theta_offset(np.pi / 2.0)
+                self.weightedEquivalentMoments = weightedEquivalentStressAllLoadCases * Izz/(d/2)
+                ax_mom.plot(self.anglesArray, self.weightedEquivalentMoments, label=f'All Cases')
+                ax_mom.set_title('Equivalant Moment Around TB [Nm]')
+                ax_mom.set_xlabel('Location around TB circumference (deg)')
+
+
+
         except KeyError:
-            print("FLS_weight_factor defined in cases dict")
+            print("FLS_weight_factor not defined in cases dict")
 
         else:
-            print('case[FLS_weight_factor] not defined, skipping this step')
-
+            print("Equivalent Stress/Moment function finished")
 
 
 

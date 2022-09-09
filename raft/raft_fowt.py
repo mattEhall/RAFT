@@ -939,6 +939,8 @@ class FOWT():
         if self.aeroServoMod >= 1 and case['wind_speed'] > 0.0:
         # wind PSD for reference
             results['wind_PSD'][iCase, :] = getPSD(self.rotor.V_w)  # <<< need to confirm
+            results['power_avg'][iCase] = self.rotor.aero_power  # compute from cc-blade coeffs
+            results['thrust_avg'][iCase] = self.rotor.aero_thrust
         # rotor-related outputs are only available if aerodynamics modeling is enabled
         if self.aeroServoMod > 1 and case['wind_speed'] > 0.0:
             # rotor speed (rpm)
