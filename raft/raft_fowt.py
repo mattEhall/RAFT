@@ -177,8 +177,13 @@ class FOWT():
 
         # this FOWT's own MoorPy system (may not be used)
         if design['mooring']:
-            self.ms = mp.System()
-            self.ms.parseYAML(design['mooring'])
+
+            if 'file' in design['mooring']:
+                self.ms = mp.System(design['mooring']['file'], 
+                                    depth=design['mooring']['water_depth'])
+            else:
+                self.ms = mp.System()
+                self.ms.parseYAML(design['mooring'])
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:
@@ -196,8 +201,11 @@ class FOWT():
             # move mooring system according to the FOWT's reference position
             self.ms.transform(trans=[x_ref, y_ref])  
             self.ms.initialize()
+
         else:
             self.ms = None
+
+
         self.F_moor0 = np.zeros(6)     # mean mooring forces in a given scenario
         self.C_moor = np.zeros([6,6])  # mooring stiffness matrix in a given scenario
 
