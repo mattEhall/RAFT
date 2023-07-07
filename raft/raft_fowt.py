@@ -177,7 +177,8 @@ class FOWT():
 
         # this FOWT's own MoorPy system (may not be used)
         if design['mooring']:
-
+            
+            # make MoorPy System from MoorDyn file or dictionary
             if 'file' in design['mooring']:
                 self.ms = mp.System(design['mooring']['file'], 
                                     depth=design['mooring']['water_depth'])
@@ -205,7 +206,7 @@ class FOWT():
         else:
             self.ms = None
 
-
+        # initialize mooring system property arrays
         self.F_moor0 = np.zeros(6)     # mean mooring forces in a given scenario
         self.C_moor = np.zeros([6,6])  # mooring stiffness matrix in a given scenario
 
